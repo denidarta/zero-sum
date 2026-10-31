@@ -45,7 +45,7 @@ public final class Ledger: ObservableObject {
     private var socketDelay = 1.0
 
     private static let pushBatch = 500
-    static let serverKey = "zs.server"
+    nonisolated static let serverKey = "zs.server"
 
     public init(
         store: LocalStore,
@@ -79,7 +79,7 @@ public final class Ledger: ObservableObject {
     }
 
     /// Lowercase, because the server and the web client write ids that way.
-    public static func newID() -> String { UUID().uuidString.lowercased() }
+    nonisolated public static func newID() -> String { UUID().uuidString.lowercased() }
 
     private static func key(_ kind: Kind, _ id: String) -> String { "\(kind.rawValue):\(id)" }
 
