@@ -7,7 +7,7 @@ use std::{path::Path, str::FromStr, sync::Mutex, time::SystemTime};
 use uuid::Uuid;
 use zero_sum_core::{
     budget::Snapshot,
-    model::{parse_data, Kind},
+    model::Kind,
     sync::{apply, Change, EntityState, Op, OpResult, OpStatus},
 };
 
@@ -160,27 +160,8 @@ impl Store {
         let changes = stmt
             .query_map([], row_to_change)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        let mut snap = Snapshot::default();
-        for c in changes {
-            let e = c.entity;
-            // Stored data was validated on write, so a parse failure means a bug or corruption.
-            match e.kind {
-                Kind::Account => snap
-                    .accounts
-                    .push((e.id, parse_data(&e.data).map_err(anyhow::Error::msg)?)),
-                Kind::Category => snap
-                    .categories
-                    .push((e.id, parse_data(&e.data).map_err(anyhow::Error::msg)?)),
-                Kind::Transaction => snap
-                    .transactions
-                    .push(parse_data(&e.data).map_err(anyhow::Error::msg)?),
-                Kind::BudgetEntry => snap
-                    .entries
-                    .push(parse_data(&e.data).map_err(anyhow::Error::msg)?),
-                Kind::CategoryGroup | Kind::Payee => {}
-            }
-        }
-        Ok(snap)
+        // Stored data was validated on write, so a parse failure means a bug or corruption.
+        Snapshot::from_entities(changes.iter().map(|c| &c.entity)).map_err(anyhow::Error::msg)
     }
 }
 

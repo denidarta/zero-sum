@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use std::env;
+use std::{env, path::PathBuf};
+use tower_http::services::{ServeDir, ServeFile};
 use tracing_subscriber::EnvFilter;
 use zero_sum_server::{
     api::{router, AppState},
@@ -23,7 +24,16 @@ async fn main() -> Result<()> {
         .with_context(|| format!("bind {addr}"))?;
     tracing::info!("listening on {addr}, database {db}");
 
-    axum::serve(listener, router(AppState::new(store)))
+    let mut app = router(AppState::new(store));
+    // Serving the web client from the same origin avoids CORS and mixed content.
+    if let Ok(dir) = env::var("ZERO_SUM_WEB_DIR") {
+        let dir = PathBuf::from(dir);
+        let index = ServeFile::new(dir.join("index.html"));
+        app = app.fallback_service(ServeDir::new(&dir).fallback(index));
+        tracing::info!("serving web client from {}", dir.display());
+    }
+
+    axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
