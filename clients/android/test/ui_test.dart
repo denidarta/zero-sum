@@ -64,6 +64,11 @@ void main() {
 
   /// Open the app on a fresh db with Checking, group Needs, categories Food and Rent.
   Future<(Db, Map<String, String>)> seed(WidgetTester tester) async {
+    // Tall screen so the bottom sheet and its Add button are on screen.
+    tester.view
+      ..physicalSize = const Size(800, 1600)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     late Db db;
     final ids = <String, String>{};
     final month = thisMonth();
@@ -112,10 +117,15 @@ void main() {
     return (db, ids);
   }
 
+  /// Multi-step saves hop between real I/O and the test's fake clock, so
+  /// alternate waiting and pumping.
   Future<void> settle(WidgetTester tester) async {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 100)),
-    );
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
   }
 

@@ -954,25 +954,29 @@ class _TxFormState extends State<TxForm> {
     final mag = total.abs();
     final memo = _memo.text.trim().isEmpty ? null : _memo.text.trim();
     try {
-      if (_transfer) {
-        await _saveTransfer(mag, memo);
-      } else {
-        await _saveTx(mag, memo);
-      }
-      if (mounted) Navigator.pop(context);
+      final saved = _transfer
+          ? await _saveTransfer(mag, memo)
+          : await _saveTx(mag, memo);
+      if (saved && mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) _fail(e is CoreException ? e.message : '$e');
     }
   }
 
-  Future<void> _saveTransfer(int mag, String? memo) async {
+  /// Both save methods return false when validation failed and the form stays open.
+  Future<bool> _saveTransfer(int mag, String? memo) async {
     final from = _from, to = _dest;
     if (from == null || to == null || from == to) {
-      return _fail('Pick two different accounts.');
+      _fail('Pick two different accounts.');
+      return false;
     }
-    if (mag == 0) return _fail('A transfer needs an amount.');
+    if (mag == 0) {
+      _fail('A transfer needs an amount.');
+      return false;
+    }
     if (_needsCategory && _category == null) {
-      return _fail('Pick the category this money comes from.');
+      _fail('Pick the category this money comes from.');
+      return false;
     }
     final category = _needsCategory ? _category : null;
     final t = _edit;
@@ -998,23 +1002,29 @@ class _TxFormState extends State<TxForm> {
         categoryId: category,
       );
     }
+    return true;
   }
 
-  Future<void> _saveTx(int mag, String? memo) async {
+  Future<bool> _saveTx(int mag, String? memo) async {
     final account = _account;
-    if (account == null) return _fail('Pick an account.');
+    if (account == null) {
+      _fail('Pick an account.');
+      return false;
+    }
     var splits = <Json>[];
     if (_split) {
       final ms = [for (final l in _lines) parseAmount(l.amount.text)];
       for (var i = 0; i < _lines.length; i++) {
         if (_lines[i].category == null || ms[i] == null || ms[i] == 0) {
-          return _fail('Every split line needs a category and an amount.');
+          _fail('Every split line needs a category and an amount.');
+          return false;
         }
       }
       if (_lineSum != mag) {
-        return _fail(
+        _fail(
           'Split lines add up to ${fmt(_lineSum)}, but the amount is ${fmt(mag)}.',
         );
+        return false;
       }
       splits = [
         for (var i = 0; i < _lines.length; i++)
@@ -1050,7 +1060,7 @@ class _TxFormState extends State<TxForm> {
         ...fields,
         if (_split) 'splits': splits,
       });
-      return;
+      return true;
     }
     // Send only what changed, so edits made elsewhere to other fields survive the merge.
     String enc(Object? v) => jsonEncode(v);
@@ -1062,6 +1072,7 @@ class _TxFormState extends State<TxForm> {
     };
     if (enc(splits) != enc(splitsOf(t))) changed['splits'] = splits;
     if (changed.isNotEmpty) await db.edit('transaction', t.id, changed);
+    return true;
   }
 
   Widget _categoryField({
