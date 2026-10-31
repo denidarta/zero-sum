@@ -2,7 +2,7 @@
 
 Private, single-user envelope budgeting (YNAB style). One Rust server on a Mac mini. Three clients: iOS, Android, web. All stay in sync. No accounts, no login.
 
-This document records the decisions and why. Status: server, shared core and web client are in this repo. The Android client (Flutter) is in this repo. iOS is not started.
+This document records the decisions and why. Status: server, shared core and web client are in this repo. iOS (`clients/ios`) and Android (`clients/android`, Flutter) clients are in this repo.
 
 ## Decisions at a glance
 
@@ -121,7 +121,7 @@ Alternatives considered:
 
 Suggested order: web first (fastest feedback on the model), then iOS, then Android.
 
-Status: the web client exists in `clients/web`. It uses IndexedDB for local storage, a service worker for offline loading, and the Rust core through `crates/wasm`. The server can serve it from the same origin (`ZERO_SUM_WEB_DIR`). iOS and Android are not started.
+Status: the web client exists in `clients/web`. It uses IndexedDB for local storage, a service worker for offline loading, and the Rust core through `crates/wasm`. The server can serve it from the same origin (`ZERO_SUM_WEB_DIR`). The Android client (`clients/android`) keeps entities in sqflite and calls the core through `crates/ffi-c`.
 
 ## Reaching the Mac mini safely
 

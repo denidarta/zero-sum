@@ -1,8 +1,8 @@
-//! WASM bindings of `zero-sum-core` for the web client.
+//! JSON-string bindings of `zero-sum-core` for the web client.
 //!
-//! The web client runs the exact same merge and budget code as the server, so
-//! the numbers on screen match the numbers the server computes. The JSON glue
-//! lives in `zero_sum_core::json`; this crate only adapts errors for JS.
+//! Thin wrappers over `zero_sum_core::json`. The web client runs the exact same
+//! merge and budget code as the server, so the numbers on screen match the
+//! numbers the server computes.
 
 use wasm_bindgen::prelude::*;
 use zero_sum_core::json;
