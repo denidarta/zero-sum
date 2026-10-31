@@ -73,8 +73,6 @@ jobs:
           channel: stable
           cache: true
       - run: clients/android/tool/build_core.sh
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
       - run: flutter build apk --debug
         working-directory: clients/android
       - run: |
