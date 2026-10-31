@@ -2,8 +2,20 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { budgetEntryId, computeBudget } from "./core";
 import type { Db } from "./db";
 import { uuid } from "./db";
-import { fmt, parse, shiftMonth, thisMonth, today } from "./money";
+import {
+  categoriesInGroup,
+  deleteCategoryTransactions,
+  deleteEmptyCategory,
+  isTransfer,
+  isUnmatched,
+  moveCategoryTransactions,
+  removeTransaction,
+  splitsOf,
+  txsInCategory,
+} from "./ledger";
+import { fmt, parse, shiftMonth, thisMonth } from "./money";
 import type { BudgetMonth, Entity } from "./types";
+import { TxForm } from "./txform";
 
 function useDb(db: Db) {
   const [, setN] = useState(0);
@@ -132,7 +144,66 @@ function BudgetView(p: {
   const rows = new Map(budget.categories.map((c) => [c.category_id, c]));
   const groups = db.list("category_group").sort(byName);
   const categories = db.list("category").sort(byName);
+  const orphaned = new Set(budget.orphaned_category_ids);
   const [newGroup, setNewGroup] = useState("");
+  const [deleting, setDeleting] = useState<Entity | null>(null);
+
+  // D1: a group with categories cannot be deleted, so no money is ever hidden.
+  const deleteGroup = (g: Entity) => {
+    if (categoriesInGroup(db, g.id).length) {
+      return alert(`Move or delete the categories in ${g.data.name} first.`);
+    }
+    if (confirm(`Delete group ${g.data.name}?`)) db.remove("category_group", g.id);
+  };
+
+  const deleteCategory = (c: Entity) => {
+    if (txsInCategory(db, c.id).length) return setDeleting(c);
+    if (confirm(`Delete category ${c.data.name}? Money assigned to it returns to Ready to Assign.`)) {
+      deleteEmptyCategory(db, c.id);
+    }
+  };
+
+  const categoryRow = (c: Entity) => {
+    const r = rows.get(c.id);
+    return (
+      <tr data-cat={c.data.name}>
+        <td>
+          {c.data.name}
+          <button class="link" title="Delete category" aria-label={`Delete category ${c.data.name}`} onClick={() => deleteCategory(c)}>
+            ×
+          </button>
+          {orphaned.has(c.id) && (
+            <select
+              class="move"
+              aria-label={`Move ${c.data.name} to a group`}
+              value=""
+              onChange={(e) => db.edit("category", c.id, { group_id: (e.target as HTMLSelectElement).value })}
+            >
+              <option value="">Move to group…</option>
+              {groups.map((g) => (
+                <option value={g.id}>{g.data.name}</option>
+              ))}
+            </select>
+          )}
+        </td>
+        <td class="num">
+          <AssignInput
+            key={`${c.id}:${month}:${r?.assigned ?? 0}`}
+            value={r?.assigned ?? 0}
+            onCommit={(v) =>
+              db.edit("budget_entry", budgetEntryId(c.id, month), {
+                category_id: c.id,
+                month,
+                assigned: v,
+              })
+            }
+          />
+        </td>
+        <td class="num">{fmt(r?.activity ?? 0)}</td>
+        <td class={`num avail ${(r?.available ?? 0) < 0 ? "neg" : ""}`}>{fmt(r?.available ?? 0)}</td>
+      </tr>
+    );
+  };
 
   return (
     <>
@@ -147,6 +218,7 @@ function BudgetView(p: {
           <strong data-testid="rta">{fmt(budget.ready_to_assign)}</strong>
         </div>
       </header>
+      {deleting && <DeleteCategory db={db} category={deleting} onDone={() => setDeleting(null)} />}
       <table class="budget">
         <thead>
           <tr>
@@ -161,39 +233,23 @@ function BudgetView(p: {
             <tr class="group">
               <th colSpan={3}>{g.data.name}</th>
               <td class="num">
-                <button class="link" title="Delete group" onClick={() => confirm(`Delete group ${g.data.name}?`) && db.remove("category_group", g.id)}>
+                <button class="link" title="Delete group" aria-label={`Delete group ${g.data.name}`} onClick={() => deleteGroup(g)}>
                   ×
                 </button>
               </td>
             </tr>
-            {categories
-              .filter((c) => c.data.group_id === g.id)
-              .map((c) => {
-                const r = rows.get(c.id);
-                return (
-                  <tr data-cat={c.data.name}>
-                    <td>{c.data.name}</td>
-                    <td class="num">
-                      <AssignInput
-                        key={`${c.id}:${month}:${r?.assigned ?? 0}`}
-                        value={r?.assigned ?? 0}
-                        onCommit={(v) =>
-                          db.edit("budget_entry", budgetEntryId(c.id, month), {
-                            category_id: c.id,
-                            month,
-                            assigned: v,
-                          })
-                        }
-                      />
-                    </td>
-                    <td class="num">{fmt(r?.activity ?? 0)}</td>
-                    <td class={`num avail ${(r?.available ?? 0) < 0 ? "neg" : ""}`}>{fmt(r?.available ?? 0)}</td>
-                  </tr>
-                );
-              })}
+            {categories.filter((c) => c.data.group_id === g.id).map(categoryRow)}
             <AddCategory db={db} groupId={g.id} />
           </tbody>
         ))}
+        {orphaned.size > 0 && (
+          <tbody data-testid="orphaned">
+            <tr class="group">
+              <th colSpan={4}>Orphaned (group was deleted)</th>
+            </tr>
+            {categories.filter((c) => orphaned.has(c.id)).map(categoryRow)}
+          </tbody>
+        )}
       </table>
       <form
         class="inline"
@@ -208,6 +264,50 @@ function BudgetView(p: {
         <button>Add group</button>
       </form>
     </>
+  );
+}
+
+/** D3: a category with transactions is deleted only after they are deleted or moved. */
+function DeleteCategory({ db, category, onDone }: { db: Db; category: Entity; onDone: () => void }) {
+  const n = txsInCategory(db, category.id).length;
+  const others = db.list("category").filter((c) => c.id !== category.id).sort(byName);
+  const [target, setTarget] = useState("");
+  return (
+    <div class="modal" role="dialog" aria-label={`Delete category ${category.data.name}`}>
+      <p>
+        <strong>{category.data.name}</strong> has {n} transaction{n === 1 ? "" : "s"}. Move them to another category or
+        delete them. Money assigned to it returns to Ready to Assign.
+      </p>
+      <div class="inline">
+        <select value={target} onChange={(e) => setTarget((e.target as HTMLSelectElement).value)}>
+          <option value="">Move transactions to…</option>
+          {others.map((c) => (
+            <option value={c.id}>{c.data.name}</option>
+          ))}
+        </select>
+        <button
+          disabled={!target}
+          onClick={() => {
+            moveCategoryTransactions(db, category.id, target);
+            onDone();
+          }}
+        >
+          Move and delete category
+        </button>
+      </div>
+      <div class="inline">
+        <button
+          onClick={() => {
+            if (!confirm(`Delete ${n} transaction${n === 1 ? "" : "s"} and the category? This cannot be undone.`)) return;
+            deleteCategoryTransactions(db, category.id);
+            onDone();
+          }}
+        >
+          Delete transactions and category
+        </button>
+        <button onClick={onDone}>Cancel</button>
+      </div>
+    </div>
   );
 }
 
@@ -256,6 +356,7 @@ function Transactions({ db, account }: { db: Db; account?: string }) {
   const accounts = db.list("account").sort(byName);
   const categories = db.list("category").sort(byName);
   const payees = db.list("payee");
+  const [editing, setEditing] = useState<string | null>(null);
   const nameOf = (list: Entity[], id?: string | null) =>
     list.find((e) => e.id === id)?.data.name ?? "";
 
@@ -264,93 +365,69 @@ function Transactions({ db, account }: { db: Db; account?: string }) {
     .filter((t) => !account || t.data.account_id === account)
     .sort((a, b) => b.data.date.localeCompare(a.data.date));
 
-  const [form, setForm] = useState({
-    date: today(),
-    account: account ?? "",
-    payee: "",
-    category: "",
-    amount: "",
-    inflow: false,
-    memo: "",
-  });
-  const set = (k: keyof typeof form) => (e: Event) => {
-    const t = e.target as HTMLInputElement;
-    setForm((f) => ({ ...f, [k]: t.type === "checkbox" ? t.checked : t.value }));
-  };
-  const acct = account ?? (form.account || accounts[0]?.id);
-
-  const add = (e: Event) => {
-    e.preventDefault();
-    const v = parse(form.amount);
-    if (v === null || !acct) return;
-    let payeeId: string | null = null;
-    const name = form.payee.trim();
-    if (name) {
-      const hit = payees.find((p) => String(p.data.name).toLowerCase() === name.toLowerCase());
-      payeeId = hit?.id ?? uuid();
-      if (!hit) db.edit("payee", payeeId, { name });
-    }
-    db.edit("transaction", uuid(), {
-      account_id: acct,
-      date: form.date,
-      amount: form.inflow ? Math.abs(v) : -Math.abs(v),
-      payee_id: payeeId,
-      category_id: form.category || null,
-      memo: form.memo.trim() || null,
-    });
-    setForm((f) => ({ ...f, payee: "", amount: "", memo: "" }));
-  };
-
   if (!accounts.length) return <p class="empty">Add an account to start.</p>;
+
+  const payeeCell = (t: Entity) => {
+    if (!isTransfer(t)) return nameOf(payees, t.data.payee_id);
+    const other = nameOf(accounts, t.data.transfer_account_id);
+    return (
+      <>
+        {t.data.amount < 0 ? `Transfer to ${other}` : `Transfer from ${other}`}
+        {isUnmatched(db, t) && <em class="neg" title="The other leg is missing"> (unmatched)</em>}
+      </>
+    );
+  };
+
+  const categoryCell = (t: Entity) => {
+    const lines = splitsOf(t);
+    if (lines.length) {
+      const title = lines.map((l) => `${nameOf(categories, l.category_id) || "(deleted)"} ${fmt(l.amount)}`).join("\n");
+      return <span title={title}>Split ({lines.length})</span>;
+    }
+    if (isTransfer(t)) return nameOf(categories, t.data.category_id);
+    return nameOf(categories, t.data.category_id) || <em>Income</em>;
+  };
 
   return (
     <>
       <h2>{account ? nameOf(accounts, account) : "All transactions"}</h2>
-      <form class="txform" onSubmit={add}>
-        <input type="date" value={form.date} onInput={set("date")} required />
-        {!account && (
-          <select value={acct} onChange={set("account")}>
-            {accounts.map((a) => (
-              <option value={a.id}>{a.data.name}</option>
-            ))}
-          </select>
-        )}
-        <input list="payees" placeholder="Payee" value={form.payee} onInput={set("payee")} />
-        <datalist id="payees">
-          {payees.map((p) => (
-            <option value={p.data.name} />
-          ))}
-        </datalist>
-        <select value={form.category} onChange={set("category")}>
-          <option value="">Income (Ready to Assign)</option>
-          {categories.map((c) => (
-            <option value={c.id}>{c.data.name}</option>
-          ))}
-        </select>
-        <input placeholder="Memo" value={form.memo} onInput={set("memo")} />
-        <input class="num" inputMode="decimal" placeholder="Amount" value={form.amount} onInput={set("amount")} required />
-        <label>
-          <input type="checkbox" checked={form.inflow} onChange={set("inflow")} /> Inflow
-        </label>
-        <button>Add</button>
-      </form>
+      <TxForm db={db} account={account} />
       <table class="tx">
         <tbody>
-          {txs.map((t) => (
-            <tr data-tx={t.id}>
-              <td>{t.data.date}</td>
-              {!account && <td>{nameOf(accounts, t.data.account_id)}</td>}
-              <td>{nameOf(payees, t.data.payee_id)}</td>
-              <td>{nameOf(categories, t.data.category_id) || <em>Income</em>}</td>
-              <td class="memo">{t.data.memo}</td>
-              <td class={`num ${t.data.amount < 0 ? "neg" : "pos"}`}>{fmt(t.data.amount)}</td>
-              <td>
-                <button class="link" title="Delete" onClick={() => db.remove("transaction", t.id)}>
-                  ×
-                </button>
-              </td>
-            </tr>
-          ))}
+          {txs.map((t) =>
+            editing === t.id ? (
+              <tr data-tx={t.id}>
+                <td colSpan={8}>
+                  <TxForm db={db} account={account} editing={t} onDone={() => setEditing(null)} />
+                </td>
+              </tr>
+            ) : (
+              <tr data-tx={t.id}>
+                <td>{t.data.date}</td>
+                {!account && <td>{nameOf(accounts, t.data.account_id)}</td>}
+                <td>{payeeCell(t)}</td>
+                <td>{categoryCell(t)}</td>
+                <td class="memo">{t.data.memo}</td>
+                <td class={`num ${t.data.amount < 0 ? "neg" : "pos"}`}>{fmt(t.data.amount)}</td>
+                <td title="Cleared">{t.data.cleared ? "✓" : ""}</td>
+                <td>
+                  <button class="link" title="Edit" aria-label="Edit transaction" onClick={() => setEditing(t.id)}>
+                    ✎
+                  </button>
+                  <button
+                    class="link"
+                    title="Delete"
+                    aria-label="Delete transaction"
+                    onClick={() =>
+                      (!isTransfer(t) || confirm("Delete both legs of this transfer?")) && removeTransaction(db, t)
+                    }
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            ),
+          )}
         </tbody>
       </table>
     </>

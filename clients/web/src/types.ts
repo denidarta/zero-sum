@@ -43,4 +43,13 @@ export interface BudgetMonth {
   month: string;
   ready_to_assign: number;
   categories: CategoryMonth[];
+  /** Live categories whose group is missing or deleted. */
+  orphaned_category_ids: string[];
+}
+
+/** One category line of a split transaction. */
+export interface Split {
+  category_id: string;
+  amount: number;
+  memo?: string | null;
 }
