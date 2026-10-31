@@ -1,0 +1,205 @@
+//! Entity types. Money is `i64` milliunits (1000 = 1.00), like YNAB.
+//!
+//! Every struct denies unknown fields so a typo in a client patch is rejected
+//! instead of silently stored.
+
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::{Map, Value};
+use std::str::FromStr;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
+    Account,
+    CategoryGroup,
+    Category,
+    Payee,
+    Transaction,
+    BudgetEntry,
+}
+
+impl Kind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Kind::Account => "account",
+            Kind::CategoryGroup => "category_group",
+            Kind::Category => "category",
+            Kind::Payee => "payee",
+            Kind::Transaction => "transaction",
+            Kind::BudgetEntry => "budget_entry",
+        }
+    }
+}
+
+impl FromStr for Kind {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String> {
+        Ok(match s {
+            "account" => Kind::Account,
+            "category_group" => Kind::CategoryGroup,
+            "category" => Kind::Category,
+            "payee" => Kind::Payee,
+            "transaction" => Kind::Transaction,
+            "budget_entry" => Kind::BudgetEntry,
+            other => return Err(format!("unknown kind {other:?}")),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountKind {
+    Checking,
+    Savings,
+    Cash,
+    CreditCard,
+    LineOfCredit,
+    Other,
+}
+
+fn yes() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Account {
+    pub name: String,
+    pub kind: AccountKind,
+    /// Off-budget (tracking) accounts never affect the budget.
+    #[serde(default = "yes")]
+    pub on_budget: bool,
+    #[serde(default)]
+    pub closed: bool,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CategoryGroup {
+    pub name: String,
+    #[serde(default)]
+    pub hidden: bool,
+    #[serde(default)]
+    pub sort: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Category {
+    pub group_id: Uuid,
+    pub name: String,
+    #[serde(default)]
+    pub hidden: bool,
+    #[serde(default)]
+    pub sort: i64,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Payee {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Transaction {
+    pub account_id: Uuid,
+    /// `YYYY-MM-DD`, local date of the transaction.
+    pub date: String,
+    /// Inflow positive, outflow negative, milliunits.
+    pub amount: i64,
+    #[serde(default)]
+    pub payee_id: Option<Uuid>,
+    /// `None` on an inflow means income into Ready to Assign.
+    #[serde(default)]
+    pub category_id: Option<Uuid>,
+    /// Set on each leg of a transfer: the account on the other side.
+    #[serde(default)]
+    pub transfer_account_id: Option<Uuid>,
+    #[serde(default)]
+    pub memo: Option<String>,
+    #[serde(default)]
+    pub cleared: bool,
+}
+
+/// Money assigned to one category in one month.
+///
+/// The entity id is derived from `(category_id, month)` so two devices that
+/// create the entry offline converge on the same entity. See [`budget_entry_id`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BudgetEntry {
+    pub category_id: Uuid,
+    /// `YYYY-MM`.
+    pub month: String,
+    pub assigned: i64,
+}
+
+const BUDGET_ENTRY_NAMESPACE: Uuid = Uuid::from_u128(0x7a65_726f_2d73_756d_8000_0000_0000_0001);
+
+/// Deterministic id for the budget entry of a category in a month.
+pub fn budget_entry_id(category_id: Uuid, month: &str) -> Uuid {
+    Uuid::new_v5(
+        &BUDGET_ENTRY_NAMESPACE,
+        format!("{category_id}:{month}").as_bytes(),
+    )
+}
+
+pub fn parse_data<T: DeserializeOwned>(data: &Map<String, Value>) -> Result<T, String> {
+    serde_json::from_value(Value::Object(data.clone())).map_err(|e| e.to_string())
+}
+
+/// Parse `YYYY-MM-DD` into `(year, month, day)`.
+pub fn parse_date(s: &str) -> Option<(i32, u32, u32)> {
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return None;
+    }
+    let y: i32 = s.get(0..4)?.parse().ok()?;
+    let m: u32 = s.get(5..7)?.parse().ok()?;
+    let d: u32 = s.get(8..10)?.parse().ok()?;
+    ((1..=12).contains(&m) && (1..=31).contains(&d)).then_some((y, m, d))
+}
+
+/// Parse `YYYY-MM` into `(year, month)`.
+pub fn parse_month(s: &str) -> Option<(i32, u32)> {
+    let b = s.as_bytes();
+    if b.len() != 7 || b[4] != b'-' {
+        return None;
+    }
+    let y: i32 = s.get(0..4)?.parse().ok()?;
+    let m: u32 = s.get(5..7)?.parse().ok()?;
+    (1..=12).contains(&m).then_some((y, m))
+}
+
+/// Check that `data` is a complete, well-formed entity of `kind` with the given `id`.
+pub fn validate(kind: Kind, id: Uuid, data: &Map<String, Value>) -> Result<(), String> {
+    match kind {
+        Kind::Account => parse_data::<Account>(data).map(drop),
+        Kind::CategoryGroup => parse_data::<CategoryGroup>(data).map(drop),
+        Kind::Category => parse_data::<Category>(data).map(drop),
+        Kind::Payee => parse_data::<Payee>(data).map(drop),
+        Kind::Transaction => {
+            let t: Transaction = parse_data(data)?;
+            parse_date(&t.date).ok_or_else(|| format!("bad date {:?}, want YYYY-MM-DD", t.date))?;
+            Ok(())
+        }
+        Kind::BudgetEntry => {
+            let e: BudgetEntry = parse_data(data)?;
+            parse_month(&e.month)
+                .ok_or_else(|| format!("bad month {:?}, want YYYY-MM", e.month))?;
+            let want = budget_entry_id(e.category_id, &e.month);
+            if id != want {
+                return Err(format!(
+                    "budget_entry id must be {want} for this category and month"
+                ));
+            }
+            Ok(())
+        }
+    }
+}
