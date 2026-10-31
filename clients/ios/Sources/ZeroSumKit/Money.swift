@@ -44,6 +44,13 @@ public enum Money {
         return String(format: "%04d-%02d-%02d", c.year ?? 1970, c.month ?? 1, c.day ?? 1)
     }
 
+    /// `YYYY-MM-DD` as a local date, `nil` when malformed.
+    public static func date(from string: String) -> Date? {
+        let p = string.split(separator: "-").compactMap { Int($0) }
+        guard p.count == 3 else { return nil }
+        return gregorian.date(from: DateComponents(year: p[0], month: p[1], day: p[2]))
+    }
+
     public static func thisMonth() -> String { String(dateString().prefix(7)) }
 
     public static func shiftMonth(_ month: String, by delta: Int) -> String {

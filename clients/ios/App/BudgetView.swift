@@ -8,12 +8,17 @@ struct BudgetView: View {
     @State private var addingGroup = false
     @State private var addingCategoryTo: Entity?
     @State private var deletingGroup: Entity?
+    @State private var blockedGroup: Entity?
+    @State private var deletingEmpty: Entity?
+    @State private var deletingWithTransactions: Entity?
+    @State private var moving: Entity?
     @State private var newName = ""
 
     var body: some View {
         let budget = ledger.budget(month: month)
         let rows = Dictionary(budget.categories.map { ($0.categoryId, $0) }, uniquingKeysWith: { a, _ in a })
         let categories = ledger.sorted(.category)
+        let orphaned = Set(budget.orphanedCategoryIds)
 
         NavigationStack {
             List {
@@ -40,10 +45,7 @@ struct BudgetView: View {
                 ForEach(ledger.sorted(.categoryGroup)) { group in
                     Section {
                         ForEach(categories.filter { $0.string("group_id") == group.id }) { cat in
-                            Button { assigning = cat } label: {
-                                CategoryRow(name: cat.name, row: rows[cat.id])
-                            }
-                            .buttonStyle(.plain)
+                            categoryRow(cat, row: rows[cat.id], orphaned: false)
                         }
                         Button("Add category") {
                             newName = ""
@@ -53,8 +55,17 @@ struct BudgetView: View {
                         HStack {
                             Text(group.name)
                             Spacer()
-                            Button(role: .destructive) { deletingGroup = group } label: { Image(systemName: "trash") }
+                            Button(role: .destructive) { askDeleteGroup(group) } label: { Image(systemName: "trash") }
                                 .accessibilityLabel("Delete group \(group.name)")
+                        }
+                    }
+                }
+
+                // D2: a category whose group is gone still shows here, so its money is never hidden.
+                if !budget.orphanedCategoryIds.isEmpty {
+                    Section("Orphaned (group was deleted)") {
+                        ForEach(categories.filter { orphaned.contains($0.id) }) { cat in
+                            categoryRow(cat, row: rows[cat.id], orphaned: true)
                         }
                     }
                 }
@@ -98,6 +109,38 @@ struct BudgetView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             }
+            .alert(
+                "Group has categories",
+                isPresented: Binding(get: { blockedGroup != nil }, set: { if !$0 { blockedGroup = nil } }),
+                presenting: blockedGroup
+            ) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { group in
+                Text("Move or delete the categories in \(group.name) first.")
+            }
+            .confirmationDialog(
+                "Delete category \(deletingEmpty?.name ?? "")?",
+                isPresented: Binding(get: { deletingEmpty != nil }, set: { if !$0 { deletingEmpty = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Delete category", role: .destructive) {
+                    if let c = deletingEmpty { ledger.run { try ledger.deleteEmptyCategory(c.id) } }
+                }
+            } message: {
+                Text("Money assigned to it returns to Ready to Assign.")
+            }
+            .confirmationDialog(
+                "Move \(moving?.name ?? "") to a group",
+                isPresented: Binding(get: { moving != nil }, set: { if !$0 { moving = nil } }),
+                titleVisibility: .visible
+            ) {
+                ForEach(ledger.sorted(.categoryGroup)) { group in
+                    Button(group.name) {
+                        if let c = moving { ledger.run { try ledger.edit(.category, c.id, ["group_id": .string(group.id)]) } }
+                    }
+                }
+            }
+            .sheet(item: $deletingWithTransactions) { cat in DeleteCategorySheet(category: cat) }
             .confirmationDialog(
                 "Delete group \(deletingGroup?.name ?? "")?",
                 isPresented: Binding(get: { deletingGroup != nil }, set: { if !$0 { deletingGroup = nil } }),
@@ -106,6 +149,29 @@ struct BudgetView: View {
                 Button("Delete group", role: .destructive) {
                     if let g = deletingGroup { ledger.run { try ledger.remove(.categoryGroup, g.id) } }
                 }
+            }
+        }
+    }
+
+    /// D1: a group that still has categories cannot be deleted, so no money is ever hidden.
+    private func askDeleteGroup(_ group: Entity) {
+        if ledger.categories(in: group.id).isEmpty { deletingGroup = group } else { blockedGroup = group }
+    }
+
+    /// D3: a category with transactions is deleted only after they are deleted or moved.
+    private func askDeleteCategory(_ category: Entity) {
+        if ledger.transactions(in: category.id).isEmpty { deletingEmpty = category } else { deletingWithTransactions = category }
+    }
+
+    private func categoryRow(_ cat: Entity, row: CategoryMonth?, orphaned: Bool) -> some View {
+        Button { assigning = cat } label: {
+            CategoryRow(name: cat.name, row: row)
+        }
+        .buttonStyle(.plain)
+        .swipeActions {
+            Button(role: .destructive) { askDeleteCategory(cat) } label: { Label("Delete", systemImage: "trash") }
+            if orphaned {
+                Button { moving = cat } label: { Label("Move", systemImage: "folder") }.tint(.blue)
             }
         }
     }
@@ -173,5 +239,54 @@ private struct AssignSheet: View {
             }
         }
         dismiss()
+    }
+}
+
+/// D3: pick what happens to a category's transactions before it is deleted.
+private struct DeleteCategorySheet: View {
+    @EnvironmentObject var ledger: Ledger
+    @Environment(\.dismiss) private var dismiss
+    let category: Entity
+    @State private var target = ""
+    @State private var confirmingDelete = false
+
+    var body: some View {
+        let count = ledger.transactions(in: category.id).count
+        let others = ledger.sorted(.category).filter { $0.id != category.id }
+        NavigationStack {
+            Form {
+                Section {
+                    Text("\(category.name) has \(count) transaction\(count == 1 ? "" : "s"). Move them to another category or delete them. Money assigned to it returns to Ready to Assign.")
+                }
+                Section("Move transactions to") {
+                    Picker("Category", selection: $target) {
+                        Text("Choose…").tag("")
+                        ForEach(others) { Text($0.name).tag($0.id) }
+                    }
+                    Button("Move and delete category") {
+                        ledger.run { try ledger.moveTransactions(from: category.id, to: target) }
+                        dismiss()
+                    }
+                    .disabled(target.isEmpty)
+                }
+                Section {
+                    Button("Delete transactions and category", role: .destructive) { confirmingDelete = true }
+                }
+            }
+            .navigationTitle("Delete \(category.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+            .confirmationDialog(
+                "Delete \(count) transaction\(count == 1 ? "" : "s") and the category? This cannot be undone.",
+                isPresented: $confirmingDelete, titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    ledger.run { try ledger.deleteTransactions(in: category.id) }
+                    dismiss()
+                }
+            }
+        }
     }
 }
