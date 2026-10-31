@@ -5,5 +5,6 @@
 //! exist exactly once. See `docs/architecture.md`.
 
 pub mod budget;
+pub mod json;
 pub mod model;
 pub mod sync;

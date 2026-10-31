@@ -51,6 +51,7 @@ jobs:
           cargo build -p zero-sum-server
           ZERO_SUM_ADDR=127.0.0.1:8787 ZERO_SUM_DB="$RUNNER_TEMP/e2e.db" target/debug/zero-sum-server &
           for i in $(seq 1 50); do curl -sf http://127.0.0.1:8787/health && break; sleep 0.2; done
+          curl -sf http://127.0.0.1:8787/health  # fail here, with the right error, if it never came up
       - name: Swift tests
         working-directory: clients/ios
         env:

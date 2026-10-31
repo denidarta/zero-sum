@@ -5,7 +5,7 @@ import XCTest
 /// These call the real Rust core through the XCFramework, so they also prove the link works.
 final class CoreTests: XCTestCase {
     func testEntryIdMatchesRust() throws {
-        // Value printed by crates/ffi for this input.
+        // Value printed by crates/ffi-uniffi for this input.
         XCTAssertEqual(
             try Core.entryId(category: "00000000-0000-4000-8000-000000000010", month: "2026-10"),
             "3b26c421-45da-5711-b215-51cbcf452c0f")
