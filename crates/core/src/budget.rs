@@ -7,6 +7,10 @@
 //! - `available = carry-in + assigned + activity`.
 //! - Positive available carries to the next month. Negative available resets
 //!   to 0 and is subtracted from the next month's Ready to Assign.
+//! - A transaction whose category is deleted counts as uncategorized, so
+//!   spending is never dropped. Split lines are attributed one by one.
+//! - A category whose group is missing or deleted is reported as orphaned so
+//!   clients can still show its money.
 //! - Credit-card payment categories are not modelled yet.
 
 use crate::model::{
@@ -20,6 +24,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Default)]
 pub struct Snapshot {
     pub accounts: Vec<(Uuid, Account)>,
+    /// Ids of live category groups.
+    pub groups: Vec<Uuid>,
     pub categories: Vec<(Uuid, Category)>,
     pub transactions: Vec<Transaction>,
     pub entries: Vec<BudgetEntry>,
@@ -37,7 +43,8 @@ impl Snapshot {
                 Kind::Category => snap.categories.push((e.id, parse_data(&e.data)?)),
                 Kind::Transaction => snap.transactions.push(parse_data(&e.data)?),
                 Kind::BudgetEntry => snap.entries.push(parse_data(&e.data)?),
-                Kind::CategoryGroup | Kind::Payee => {}
+                Kind::CategoryGroup => snap.groups.push(e.id),
+                Kind::Payee => {}
             }
         }
         Ok(snap)
@@ -57,6 +64,9 @@ pub struct BudgetMonth {
     pub month: String,
     pub ready_to_assign: i64,
     pub categories: Vec<CategoryMonth>,
+    /// Live categories whose group is missing or deleted, sorted by id.
+    #[serde(default)]
+    pub orphaned_category_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -89,6 +99,16 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
         .collect();
     let mut cats: Vec<Uuid> = snap.categories.iter().map(|(id, _)| *id).collect();
     cats.sort();
+    let group_set: HashSet<Uuid> = snap.groups.iter().copied().collect();
+    let orphaned: Vec<Uuid> = cats
+        .iter()
+        .copied()
+        .filter(|c| {
+            snap.categories
+                .iter()
+                .any(|(id, cat)| id == c && !group_set.contains(&cat.group_id))
+        })
+        .collect();
     let cat_set: HashSet<Uuid> = cats.iter().copied().collect();
 
     let mut assigned: HashMap<(Uuid, Ym), i64> = HashMap::new();
@@ -113,10 +133,20 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
             continue;
         }
         let m = Ym::of_date(&t.date).ok_or("transaction with bad date")?;
-        match t.category_id {
-            Some(c) if cat_set.contains(&c) => *activity.entry((c, m)).or_default() += t.amount,
-            Some(_) => continue, // category deleted
-            None => *income.entry(m).or_default() += t.amount,
+        let lines: Vec<(Option<Uuid>, i64)> = if t.splits.is_empty() {
+            vec![(t.category_id, t.amount)]
+        } else {
+            t.splits
+                .iter()
+                .map(|l| (Some(l.category_id), l.amount))
+                .collect()
+        };
+        for (cat, amount) in lines {
+            match cat {
+                Some(c) if cat_set.contains(&c) => *activity.entry((c, m)).or_default() += amount,
+                // Uncategorized, or its category was deleted: counts against Ready to Assign.
+                _ => *income.entry(m).or_default() += amount,
+            }
         }
         start = start.min(m);
     }
@@ -151,6 +181,7 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
                 month: month.to_string(),
                 ready_to_assign: income_cum - assigned_cum - overspent_before,
                 categories: rows,
+                orphaned_category_ids: orphaned,
             });
         }
         overspent_before += overspent;
@@ -161,7 +192,7 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::AccountKind;
+    use crate::model::{AccountKind, Split};
 
     fn id(n: u128) -> Uuid {
         Uuid::from_u128(n)
@@ -188,6 +219,7 @@ mod tests {
                 (id(2), acct(true)),
                 (id(3), acct(false)),
             ],
+            groups: vec![id(500)],
             categories: vec![(id(10), cat("Rent")), (id(11), cat("Food"))],
             ..Default::default()
         }
@@ -201,6 +233,8 @@ mod tests {
             payee_id: None,
             category_id: category.map(id),
             transfer_account_id: None,
+            transfer_transaction_id: None,
+            splits: vec![],
             memo: None,
             cleared: false,
         }
@@ -277,6 +311,52 @@ mod tests {
         ];
         let b = compute(&s, "2026-10").unwrap();
         assert_eq!(b.ready_to_assign, 1_000_000);
+    }
+
+    #[test]
+    fn deleted_category_transactions_count_as_uncategorized() {
+        let mut s = snap();
+        s.transactions = vec![
+            tx(1, "2026-10-01", 1_000_000, None),
+            tx(1, "2026-10-02", -200_000, Some(99)), // category 99 is deleted
+        ];
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(b.ready_to_assign, 800_000);
+    }
+
+    #[test]
+    fn split_lines_hit_their_categories() {
+        let mut s = snap();
+        let mut split = tx(1, "2026-10-05", -300_000, None);
+        split.splits = vec![
+            Split {
+                category_id: id(10),
+                amount: -100_000,
+                memo: None,
+            },
+            Split {
+                category_id: id(11),
+                amount: -200_000,
+                memo: None,
+            },
+        ];
+        s.transactions = vec![tx(1, "2026-10-01", 1_000_000, None), split];
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(row(&b, 10).activity, -100_000);
+        assert_eq!(row(&b, 11).activity, -200_000);
+        assert_eq!(b.ready_to_assign, 1_000_000);
+    }
+
+    #[test]
+    fn categories_without_a_live_group_are_orphaned() {
+        let mut s = snap();
+        s.groups.clear();
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(b.orphaned_category_ids, vec![id(10), id(11)]);
+        assert!(compute(&snap(), "2026-10")
+            .unwrap()
+            .orphaned_category_ids
+            .is_empty());
     }
 
     #[test]

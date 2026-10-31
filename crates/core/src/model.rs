@@ -121,10 +121,27 @@ pub struct Transaction {
     /// Set on each leg of a transfer: the account on the other side.
     #[serde(default)]
     pub transfer_account_id: Option<Uuid>,
+    /// Set on each leg of a transfer: the id of the other leg.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transfer_transaction_id: Option<Uuid>,
+    /// Category lines of a split. Empty for an unsplit transaction. The line
+    /// amounts must sum to `amount`. One field, so concurrent edits merge whole.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub splits: Vec<Split>,
     #[serde(default)]
     pub memo: Option<String>,
     #[serde(default)]
     pub cleared: bool,
+}
+
+/// One category line of a split transaction. Lines are never transfers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Split {
+    pub category_id: Uuid,
+    pub amount: i64,
+    #[serde(default)]
+    pub memo: Option<String>,
 }
 
 /// Money assigned to one category in one month.
@@ -187,6 +204,24 @@ pub fn validate(kind: Kind, id: Uuid, data: &Map<String, Value>) -> Result<(), S
         Kind::Transaction => {
             let t: Transaction = parse_data(data)?;
             parse_date(&t.date).ok_or_else(|| format!("bad date {:?}, want YYYY-MM-DD", t.date))?;
+            if t.transfer_transaction_id.is_some() && t.transfer_account_id.is_none() {
+                return Err("transfer_transaction_id needs transfer_account_id".into());
+            }
+            if !t.splits.is_empty() {
+                if t.transfer_account_id.is_some() {
+                    return Err("a transfer cannot be split".into());
+                }
+                if t.category_id.is_some() {
+                    return Err("a split transaction has no category of its own".into());
+                }
+                let sum = t
+                    .splits
+                    .iter()
+                    .try_fold(0i64, |a, l| a.checked_add(l.amount));
+                if sum != Some(t.amount) {
+                    return Err(format!("split lines must sum to amount {}", t.amount));
+                }
+            }
             Ok(())
         }
         Kind::BudgetEntry => {
@@ -201,5 +236,57 @@ pub fn validate(kind: Kind, id: Uuid, data: &Map<String, Value>) -> Result<(), S
             }
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn check(extra: Value) -> Result<(), String> {
+        let mut data = json!({
+            "account_id": "00000000-0000-4000-8000-000000000001",
+            "date": "2026-10-05",
+            "amount": -300,
+        });
+        data.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        validate(Kind::Transaction, Uuid::nil(), data.as_object().unwrap())
+    }
+
+    fn line(n: u8, amount: i64) -> Value {
+        json!({"category_id": format!("00000000-0000-4000-8000-0000000000{n:02}"), "amount": amount})
+    }
+
+    #[test]
+    fn split_lines_must_sum_to_amount() {
+        assert!(check(json!({"splits": [line(10, -100), line(11, -200)]})).is_ok());
+        assert!(check(json!({"splits": [line(10, -100), line(11, -100)]})).is_err());
+    }
+
+    #[test]
+    fn split_excludes_category_and_transfer() {
+        let s = json!([line(10, -300)]);
+        assert!(
+            check(json!({"splits": s, "category_id": "00000000-0000-4000-8000-000000000010"}))
+                .is_err()
+        );
+        assert!(check(
+            json!({"splits": s, "transfer_account_id": "00000000-0000-4000-8000-000000000002"})
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn transfer_partner_needs_transfer_account() {
+        let partner = "00000000-0000-4000-8000-000000000077";
+        assert!(check(json!({"transfer_transaction_id": partner})).is_err());
+        assert!(check(json!({
+            "transfer_transaction_id": partner,
+            "transfer_account_id": "00000000-0000-4000-8000-000000000002",
+        }))
+        .is_ok());
     }
 }
