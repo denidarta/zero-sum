@@ -15,12 +15,15 @@ class ZeroSumApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'zero-sum',
-        theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-        darkTheme: ThemeData(
-            colorSchemeSeed: Colors.teal, brightness: Brightness.dark, useMaterial3: true),
-        home: Home(db: db),
-      );
+    title: 'zero-sum',
+    theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
+    darkTheme: ThemeData(
+      colorSchemeSeed: Colors.teal,
+      brightness: Brightness.dark,
+      useMaterial3: true,
+    ),
+    home: Home(db: db),
+  );
 }
 
 class Home extends StatefulWidget {
@@ -62,42 +65,57 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   Future<void> _server() async {
-    final url = await promptText(context, 'Server URL',
-        initial: db.serverUrl,
-        hint: 'https://mac-mini.tailnet.ts.net',
-        keyboard: TextInputType.url);
+    final url = await promptText(
+      context,
+      'Server URL',
+      initial: db.serverUrl,
+      hint: 'https://mac-mini.tailnet.ts.net',
+      keyboard: TextInputType.url,
+    );
     if (url != null) await db.setServer(url);
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: db,
-        builder: (context, _) => Scaffold(
-          appBar: AppBar(
-            title: const Text('zero-sum'),
-            actions: [
-              _SyncChip(db: db),
-              IconButton(
-                  icon: const Icon(Icons.settings), tooltip: 'Server', onPressed: _server),
-            ],
+    listenable: db,
+    builder: (context, _) => Scaffold(
+      appBar: AppBar(
+        title: const Text('zero-sum'),
+        actions: [
+          _SyncChip(db: db),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Server',
+            onPressed: _server,
           ),
-          body: switch (_tab) {
-            0 => BudgetPage(
-                db: db, month: _month, setMonth: (m) => setState(() => _month = m)),
-            1 => TransactionsPage(db: db),
-            _ => AccountsPage(db: db),
-          },
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _tab,
-            onDestinationSelected: (i) => setState(() => _tab = i),
-            destinations: const [
-              NavigationDestination(icon: Icon(Icons.pie_chart), label: 'Budget'),
-              NavigationDestination(icon: Icon(Icons.receipt_long), label: 'Transactions'),
-              NavigationDestination(icon: Icon(Icons.account_balance), label: 'Accounts'),
-            ],
-          ),
+        ],
+      ),
+      body: switch (_tab) {
+        0 => BudgetPage(
+          db: db,
+          month: _month,
+          setMonth: (m) => setState(() => _month = m),
         ),
-      );
+        1 => TransactionsPage(db: db),
+        _ => AccountsPage(db: db),
+      },
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.pie_chart), label: 'Budget'),
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long),
+            label: 'Transactions',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.account_balance),
+            label: 'Accounts',
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SyncChip extends StatelessWidget {
@@ -114,15 +132,24 @@ class _SyncChip extends StatelessWidget {
     final pending = db.outbox.isEmpty ? '' : ' · ${db.outbox.length} pending';
     return Padding(
       padding: const EdgeInsets.only(right: 4),
-      child: Text('$label$pending', key: const Key('sync'), style: Theme.of(context).textTheme.labelMedium),
+      child: Text(
+        '$label$pending',
+        key: const Key('sync'),
+        style: Theme.of(context).textTheme.labelMedium,
+      ),
     );
   }
 }
 
 // ---- dialogs ----
 
-Future<String?> promptText(BuildContext context, String title,
-    {String initial = '', String? hint, TextInputType? keyboard}) {
+Future<String?> promptText(
+  BuildContext context,
+  String title, {
+  String initial = '',
+  String? hint,
+  TextInputType? keyboard,
+}) {
   final c = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
@@ -136,8 +163,14 @@ Future<String?> promptText(BuildContext context, String title,
         onSubmitted: (v) => Navigator.pop(ctx, v),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('OK')),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, c.text),
+          child: const Text('OK'),
+        ),
       ],
     ),
   );
@@ -149,20 +182,32 @@ Future<bool> confirm(BuildContext context, String question) async =>
       builder: (ctx) => AlertDialog(
         title: Text(question),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     ) ??
     false;
 
-void _toast(BuildContext context, Object e) => ScaffoldMessenger.of(context)
-    .showSnackBar(SnackBar(content: Text(e is CoreException ? e.message : '$e')));
+void _toast(BuildContext context, Object e) => ScaffoldMessenger.of(
+  context,
+).showSnackBar(SnackBar(content: Text(e is CoreException ? e.message : '$e')));
 
 // ---- budget ----
 
 class BudgetPage extends StatefulWidget {
-  const BudgetPage({super.key, required this.db, required this.month, required this.setMonth});
+  const BudgetPage({
+    super.key,
+    required this.db,
+    required this.month,
+    required this.setMonth,
+  });
   final Db db;
   final String month;
   final void Function(String) setMonth;
@@ -181,8 +226,9 @@ class _BudgetPageState extends State<BudgetPage> {
   /// Recompute only when data or month changed.
   Map<String, dynamic> _compute() {
     if (_forVersion != db.version || _forMonth != widget.month) {
-      _budget = Core.instance.budget(
-          [for (final e in db.entities.values) e.json], widget.month);
+      _budget = Core.instance.budget([
+        for (final e in db.entities.values) e.json,
+      ], widget.month);
       _forVersion = db.version;
       _forMonth = widget.month;
     }
@@ -194,92 +240,135 @@ class _BudgetPageState extends State<BudgetPage> {
     final b = _compute();
     final rta = b['ready_to_assign'] as int;
     final rows = {
-      for (final c in b['categories'] as List) c['category_id'] as String: c as Map<String, dynamic>
+      for (final c in b['categories'] as List)
+        c['category_id'] as String: c as Map<String, dynamic>,
     };
     final groups = db.list('category_group')..sort(_byName);
     final cats = db.list('category')..sort(_byName);
     final theme = Theme.of(context);
     final red = theme.colorScheme.error;
 
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(children: [
-          IconButton(
-              tooltip: 'Previous month',
-              icon: const Icon(Icons.chevron_left),
-              onPressed: () => widget.setMonth(shiftMonth(widget.month, -1))),
-          Text(widget.month, key: const Key('month'), style: theme.textTheme.titleMedium),
-          IconButton(
-              tooltip: 'Next month',
-              icon: const Icon(Icons.chevron_right),
-              onPressed: () => widget.setMonth(shiftMonth(widget.month, 1))),
-          const Spacer(),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('Ready to Assign', style: theme.textTheme.labelSmall),
-            Text(fmt(rta),
-                key: const Key('rta'),
-                style: theme.textTheme.titleMedium?.copyWith(color: rta < 0 ? red : null)),
-          ]),
-        ]),
-      ),
-      const Divider(height: 1),
-      Expanded(
-        child: ListView(children: [
-          for (final g in groups) ...[
-            Container(
-              color: theme.colorScheme.surfaceContainerHighest,
-              child: ListTile(
-                dense: true,
-                title: Text(g.str('name'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                trailing: IconButton(
-                  tooltip: 'Delete group',
-                  icon: const Icon(Icons.close),
-                  onPressed: () async {
-                    if (await confirm(context, 'Delete group ${g.str('name')}?')) {
-                      await db.remove('category_group', g.id);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: 'Previous month',
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () => widget.setMonth(shiftMonth(widget.month, -1)),
+              ),
+              Text(
+                widget.month,
+                key: const Key('month'),
+                style: theme.textTheme.titleMedium,
+              ),
+              IconButton(
+                tooltip: 'Next month',
+                icon: const Icon(Icons.chevron_right),
+                onPressed: () => widget.setMonth(shiftMonth(widget.month, 1)),
+              ),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('Ready to Assign', style: theme.textTheme.labelSmall),
+                  Text(
+                    fmt(rta),
+                    key: const Key('rta'),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: rta < 0 ? red : null,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final g in groups) ...[
+                Container(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: ListTile(
+                    dense: true,
+                    title: Text(
+                      g.str('name'),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    trailing: IconButton(
+                      tooltip: 'Delete group',
+                      icon: const Icon(Icons.close),
+                      onPressed: () async {
+                        if (await confirm(
+                          context,
+                          'Delete group ${g.str('name')}?',
+                        )) {
+                          await db.remove('category_group', g.id);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                for (final c in cats.where((c) => c.data['group_id'] == g.id))
+                  _CategoryRow(
+                    db: db,
+                    month: widget.month,
+                    cat: c,
+                    row: rows[c.id],
+                  ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.add),
+                  title: const Text('Add category'),
+                  onTap: () async {
+                    final n = (await promptText(
+                      context,
+                      'New category',
+                    ))?.trim();
+                    if (n != null && n.isNotEmpty) {
+                      await db.edit('category', newId(), {
+                        'group_id': g.id,
+                        'name': n,
+                      });
                     }
                   },
                 ),
+              ],
+              ListTile(
+                leading: const Icon(Icons.create_new_folder),
+                title: const Text('Add category group'),
+                onTap: () async {
+                  final n = (await promptText(
+                    context,
+                    'New category group',
+                  ))?.trim();
+                  if (n != null && n.isNotEmpty) {
+                    await db.edit('category_group', newId(), {
+                      'name': n,
+                      'sort': groups.length,
+                    });
+                  }
+                },
               ),
-            ),
-            for (final c in cats.where((c) => c.data['group_id'] == g.id))
-              _CategoryRow(
-                db: db,
-                month: widget.month,
-                cat: c,
-                row: rows[c.id],
-              ),
-            ListTile(
-              dense: true,
-              leading: const Icon(Icons.add),
-              title: const Text('Add category'),
-              onTap: () async {
-                final n = (await promptText(context, 'New category'))?.trim();
-                if (n != null && n.isNotEmpty) {
-                  await db.edit('category', newId(), {'group_id': g.id, 'name': n});
-                }
-              },
-            ),
-          ],
-          ListTile(
-            leading: const Icon(Icons.create_new_folder),
-            title: const Text('Add category group'),
-            onTap: () async {
-              final n = (await promptText(context, 'New category group'))?.trim();
-              if (n != null && n.isNotEmpty) {
-                await db.edit('category_group', newId(), {'name': n, 'sort': groups.length});
-              }
-            },
+            ],
           ),
-        ]),
-      ),
-    ]);
+        ),
+      ],
+    );
   }
 }
 
 class _CategoryRow extends StatelessWidget {
-  const _CategoryRow({required this.db, required this.month, required this.cat, this.row});
+  const _CategoryRow({
+    required this.db,
+    required this.month,
+    required this.cat,
+    this.row,
+  });
   final Db db;
   final String month;
   final Entity cat;
@@ -295,18 +384,32 @@ class _CategoryRow extends StatelessWidget {
       key: Key('cat-${cat.str('name')}'),
       title: Text(cat.str('name')),
       subtitle: Text('Assigned ${fmt(assigned)}  ·  Activity ${fmt(activity)}'),
-      trailing: Text(fmt(available),
-          style: TextStyle(fontWeight: FontWeight.bold, color: available < 0 ? red : null)),
+      trailing: Text(
+        fmt(available),
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: available < 0 ? red : null,
+        ),
+      ),
       onTap: () async {
-        final text = await promptText(context, 'Assigned to ${cat.str('name')}',
-            initial: fmt(assigned),
-            keyboard: const TextInputType.numberWithOptions(decimal: true, signed: true));
+        final text = await promptText(
+          context,
+          'Assigned to ${cat.str('name')}',
+          initial: fmt(assigned),
+          keyboard: const TextInputType.numberWithOptions(
+            decimal: true,
+            signed: true,
+          ),
+        );
         if (text == null) return;
         final v = parseAmount(text);
         if (v == null || v == assigned) return;
         try {
-          await db.edit('budget_entry', Core.instance.budgetEntryId(cat.id, month),
-              {'category_id': cat.id, 'month': month, 'assigned': v});
+          await db.edit(
+            'budget_entry',
+            Core.instance.budgetEntryId(cat.id, month),
+            {'category_id': cat.id, 'month': month, 'assigned': v},
+          );
         } catch (e) {
           if (context.mounted) _toast(context, e);
         }
@@ -330,16 +433,23 @@ class AccountsPage extends StatelessWidget {
     }
     final accounts = db.list('account')..sort(_byName);
     return Scaffold(
-      body: ListView(children: [
-        for (final a in accounts)
-          ListTile(
-            title: Text(a.str('name')),
-            subtitle: a.data['on_budget'] == false ? const Text('Tracking') : null,
-            trailing: Text(fmt(balances[a.id] ?? 0)),
-          ),
-        if (accounts.isEmpty)
-          const Padding(padding: EdgeInsets.all(24), child: Text('Add an account to start.')),
-      ]),
+      body: ListView(
+        children: [
+          for (final a in accounts)
+            ListTile(
+              title: Text(a.str('name')),
+              subtitle: a.data['on_budget'] == false
+                  ? const Text('Tracking')
+                  : null,
+              trailing: Text(fmt(balances[a.id] ?? 0)),
+            ),
+          if (accounts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Add an account to start.'),
+            ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.add),
         label: const Text('Account'),
@@ -356,20 +466,31 @@ class AccountsPage extends StatelessWidget {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, set) => AlertDialog(
           title: const Text('New account'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
                 controller: name,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: 'Name')),
-            SwitchListTile(
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+              SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('On budget'),
                 value: onBudget,
-                onChanged: (v) => set(() => onBudget = v)),
-          ]),
+                onChanged: (v) => set(() => onBudget = v),
+              ),
+            ],
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Add'),
+            ),
           ],
         ),
       ),
@@ -412,56 +533,74 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
     final payees = db.list('payee');
     final cats = db.list('category');
-    final txs = db
-        .list('transaction')
-        .where((t) => _account == null || t.data['account_id'] == _account)
-        .toList()
-      ..sort((a, b) => b.str('date').compareTo(a.str('date')));
+    final txs =
+        db
+            .list('transaction')
+            .where((t) => _account == null || t.data['account_id'] == _account)
+            .toList()
+          ..sort((a, b) => b.str('date').compareTo(a.str('date')));
 
     return Scaffold(
-      body: Column(children: [
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: DropdownButtonFormField<String?>(
-            initialValue: _account,
-            decoration: const InputDecoration(labelText: 'Account'),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('All accounts')),
-              for (final a in accounts) DropdownMenuItem(value: a.id, child: Text(a.str('name'))),
-            ],
-            onChanged: (v) => setState(() => _account = v),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: DropdownButtonFormField<String?>(
+              initialValue: _account,
+              decoration: const InputDecoration(labelText: 'Account'),
+              items: [
+                const DropdownMenuItem(
+                  value: null,
+                  child: Text('All accounts'),
+                ),
+                for (final a in accounts)
+                  DropdownMenuItem(value: a.id, child: Text(a.str('name'))),
+              ],
+              onChanged: (v) => setState(() => _account = v),
+            ),
           ),
-        ),
-        Expanded(
-          child: ListView(children: [
-            for (final t in txs)
-              Dismissible(
-                key: Key('tx-${t.id}'),
-                direction: DismissDirection.endToStart,
-                background: Container(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 16),
-                    child: const Icon(Icons.delete)),
-                onDismissed: (_) => db.remove('transaction', t.id),
-                child: ListTile(
-                  title: Text(name(payees, t.data['payee_id']).ifEmpty('—')),
-                  subtitle: Text([
-                    t.str('date'),
-                    if (_account == null) name(accounts, t.data['account_id']),
-                    name(cats, t.data['category_id']).ifEmpty('Income'),
-                    if (t.str('memo').isNotEmpty) t.str('memo'),
-                  ].join(' · ')),
-                  trailing: Text(fmt(t.data['amount'] as int),
-                      style: TextStyle(
+          Expanded(
+            child: ListView(
+              children: [
+                for (final t in txs)
+                  Dismissible(
+                    key: Key('tx-${t.id}'),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 16),
+                      child: const Icon(Icons.delete),
+                    ),
+                    onDismissed: (_) => db.remove('transaction', t.id),
+                    child: ListTile(
+                      title: Text(
+                        name(payees, t.data['payee_id']).ifEmpty('—'),
+                      ),
+                      subtitle: Text(
+                        [
+                          t.str('date'),
+                          if (_account == null)
+                            name(accounts, t.data['account_id']),
+                          name(cats, t.data['category_id']).ifEmpty('Income'),
+                          if (t.str('memo').isNotEmpty) t.str('memo'),
+                        ].join(' · '),
+                      ),
+                      trailing: Text(
+                        fmt(t.data['amount'] as int),
+                        style: TextStyle(
                           color: (t.data['amount'] as int) < 0
                               ? Theme.of(context).colorScheme.error
-                              : Colors.green)),
-                ),
-              ),
-          ]),
-        ),
-      ]),
+                              : Colors.green,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.add),
         label: const Text('Transaction'),
@@ -490,7 +629,8 @@ class TxForm extends StatefulWidget {
 
 class _TxFormState extends State<TxForm> {
   late DateTime _date = DateTime.now();
-  late String? _account = widget.account ?? widget.db.list('account').firstOrNull?.id;
+  late String? _account =
+      widget.account ?? widget.db.list('account').firstOrNull?.id;
   String? _category;
   bool _inflow = false;
   final _amount = TextEditingController();
@@ -538,62 +678,93 @@ class _TxFormState extends State<TxForm> {
     final payees = [for (final p in db.list('payee')) p.str('name')];
     return Padding(
       padding: EdgeInsets.only(
-          left: 16, right: 16, top: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 16),
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
       child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.calendar_today),
-                label: Text(isoDate(_date)),
-                onPressed: () async {
-                  final d = await showDatePicker(
-                      context: context,
-                      initialDate: _date,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100));
-                  if (d != null) setState(() => _date = d);
-                },
-              ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.calendar_today),
+                    label: Text(isoDate(_date)),
+                    onPressed: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: _date,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (d != null) setState(() => _date = d);
+                    },
+                  ),
+                ),
+              ],
             ),
-          ]),
-          DropdownButtonFormField<String>(
-            initialValue: _account,
-            decoration: const InputDecoration(labelText: 'Account'),
-            items: [for (final a in accounts) DropdownMenuItem(value: a.id, child: Text(a.str('name')))],
-            onChanged: (v) => _account = v,
-          ),
-          Autocomplete<String>(
-            optionsBuilder: (v) => payees.where((p) => p.toLowerCase().contains(v.text.toLowerCase())),
-            fieldViewBuilder: (ctx, c, focus, _) {
-              _payee = c;
-              return TextField(
-                  controller: c, focusNode: focus, decoration: const InputDecoration(labelText: 'Payee'));
-            },
-          ),
-          DropdownButtonFormField<String?>(
-            initialValue: _category,
-            decoration: const InputDecoration(labelText: 'Category'),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('Income (Ready to Assign)')),
-              for (final c in cats) DropdownMenuItem(value: c.id, child: Text(c.str('name'))),
-            ],
-            onChanged: (v) => _category = v,
-          ),
-          TextField(controller: _memo, decoration: const InputDecoration(labelText: 'Memo')),
-          TextField(
-            controller: _amount,
-            key: const Key('amount'),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Amount'),
-          ),
-          SwitchListTile(
+            DropdownButtonFormField<String>(
+              initialValue: _account,
+              decoration: const InputDecoration(labelText: 'Account'),
+              items: [
+                for (final a in accounts)
+                  DropdownMenuItem(value: a.id, child: Text(a.str('name'))),
+              ],
+              onChanged: (v) => _account = v,
+            ),
+            Autocomplete<String>(
+              optionsBuilder: (v) => payees.where(
+                (p) => p.toLowerCase().contains(v.text.toLowerCase()),
+              ),
+              fieldViewBuilder: (ctx, c, focus, _) {
+                _payee = c;
+                return TextField(
+                  controller: c,
+                  focusNode: focus,
+                  decoration: const InputDecoration(labelText: 'Payee'),
+                );
+              },
+            ),
+            DropdownButtonFormField<String?>(
+              initialValue: _category,
+              decoration: const InputDecoration(labelText: 'Category'),
+              items: [
+                const DropdownMenuItem(
+                  value: null,
+                  child: Text('Income (Ready to Assign)'),
+                ),
+                for (final c in cats)
+                  DropdownMenuItem(value: c.id, child: Text(c.str('name'))),
+              ],
+              onChanged: (v) => _category = v,
+            ),
+            TextField(
+              controller: _memo,
+              decoration: const InputDecoration(labelText: 'Memo'),
+            ),
+            TextField(
+              controller: _amount,
+              key: const Key('amount'),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: 'Amount'),
+            ),
+            SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Inflow'),
               value: _inflow,
-              onChanged: (v) => setState(() => _inflow = v)),
-          SizedBox(width: double.infinity, child: FilledButton(onPressed: _save, child: const Text('Add'))),
-        ]),
+              onChanged: (v) => setState(() => _inflow = v),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(onPressed: _save, child: const Text('Add')),
+            ),
+          ],
+        ),
       ),
     );
   }

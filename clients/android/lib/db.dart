@@ -42,12 +42,20 @@ class Db extends ChangeNotifier {
 
   /// Create the tables. Pass as `onCreate` with `version: 1`.
   static Future<void> create(Database db, int version) async {
-    await db.execute('CREATE TABLE entities (key TEXT PRIMARY KEY, json TEXT NOT NULL)');
-    await db.execute('CREATE TABLE outbox (op_id TEXT PRIMARY KEY, ts INTEGER NOT NULL, json TEXT NOT NULL)');
+    await db.execute(
+      'CREATE TABLE entities (key TEXT PRIMARY KEY, json TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE TABLE outbox (op_id TEXT PRIMARY KEY, ts INTEGER NOT NULL, json TEXT NOT NULL)',
+    );
     await db.execute('CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
   }
 
-  static Future<Db> open(Database sql, {http.Client? client, Core? core}) async {
+  static Future<Db> open(
+    Database sql, {
+    http.Client? client,
+    Core? core,
+  }) async {
     final db = Db._(sql, client ?? http.Client(), core ?? Core.instance);
     await db._load();
     return db;
@@ -85,10 +93,11 @@ class Db extends ChangeNotifier {
     }
     outbox = [
       for (final r in await _sql.query('outbox', orderBy: 'ts'))
-        jsonDecode(r['json'] as String) as Json
+        jsonDecode(r['json'] as String) as Json,
     ];
     final meta = {
-      for (final r in await _sql.query('meta')) r['k'] as String: r['v'] as String
+      for (final r in await _sql.query('meta'))
+        r['k'] as String: r['v'] as String,
     };
     cursor = int.tryParse(meta['cursor'] ?? '') ?? 0;
     serverUrl = meta['server'] ?? '';
@@ -99,8 +108,10 @@ class Db extends ChangeNotifier {
     _bump();
   }
 
-  Future<void> _putMeta(String k, String v) =>
-      _sql.insert('meta', {'k': k, 'v': v}, conflictAlgorithm: ConflictAlgorithm.replace);
+  Future<void> _putMeta(String k, String v) => _sql.insert('meta', {
+    'k': k,
+    'v': v,
+  }, conflictAlgorithm: ConflictAlgorithm.replace);
 
   void _bump() {
     version++;
@@ -112,33 +123,50 @@ class Db extends ChangeNotifier {
 
   Entity? get(String kind, String id) => entities['$kind:$id'];
 
+  Future<void> _tail = Future.value();
+
   /// Apply an edit locally and queue it for the server. Throws [CoreException]
-  /// on invalid input; nothing is queued then.
-  Future<void> edit(String kind, String id, Json fields, {bool? deleted}) async {
+  /// on invalid input and rethrows a failed disk write; nothing is queued or
+  /// visible then. Edits run one at a time so each merges over the previous.
+  Future<void> edit(String kind, String id, Json fields, {bool? deleted}) {
+    final run = _tail.then((_) => _edit(kind, id, fields, deleted));
+    _tail = run.catchError((_) {});
+    return run;
+  }
+
+  Future<void> _edit(String kind, String id, Json fields, bool? deleted) async {
     // Strictly increasing so a later local edit always beats an earlier one.
-    _lastTs = max(DateTime.now().millisecondsSinceEpoch, _lastTs + 1);
+    final ts = max(DateTime.now().millisecondsSinceEpoch, _lastTs + 1);
     final op = <String, dynamic>{
       'op_id': newId(),
-      'ts': _lastTs,
+      'ts': ts,
       'kind': kind,
       'entity_id': id,
       'fields': fields,
       'deleted': ?deleted,
     };
-    final merged = _core.merge(get(kind, id)?.json, op);
-    final e = Entity(merged['state'] as Json);
+    final e = Entity(_core.merge(get(kind, id)?.json, op)['state'] as Json);
+    // Disk first: memory changes only once the edit is durable.
+    await _sql.transaction((t) async {
+      await t.insert('entities', {
+        'key': '$kind:$id',
+        'json': jsonEncode(e.json),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await t.insert('outbox', {
+        'op_id': op['op_id'],
+        'ts': ts,
+        'json': jsonEncode(op),
+      });
+    });
+    _lastTs = ts;
     entities['$kind:$id'] = e;
     outbox.add(op);
     _bump();
-    await _sql.transaction((t) async {
-      await t.insert('entities', {'key': '$kind:$id', 'json': jsonEncode(e.json)},
-          conflictAlgorithm: ConflictAlgorithm.replace);
-      await t.insert('outbox', {'op_id': op['op_id'], 'ts': op['ts'], 'json': jsonEncode(op)});
-    });
     unawaited(sync());
   }
 
-  Future<void> remove(String kind, String id) => edit(kind, id, {}, deleted: true);
+  Future<void> remove(String kind, String id) =>
+      edit(kind, id, {}, deleted: true);
 
   // ---- sync ----
 
@@ -181,14 +209,18 @@ class Db extends ChangeNotifier {
     while (outbox.isNotEmpty) {
       final batch = outbox.take(_pushBatch).toList();
       final res = await _http
-          .post(_url('/sync/push'),
-              headers: {'content-type': 'application/json'},
-              body: jsonEncode({'device_id': deviceId, 'ops': batch}))
+          .post(
+            _url('/sync/push'),
+            headers: {'content-type': 'application/json'},
+            body: jsonEncode({'device_id': deviceId, 'ops': batch}),
+          )
           .timeout(_timeout);
       if (res.statusCode != 200) throw Exception('push ${res.statusCode}');
       final results = (jsonDecode(res.body) as Json)['results'] as List;
       for (final r in results) {
-        if (r['status'] == 'rejected') debugPrint('op rejected: ${r['reason']}');
+        if (r['status'] == 'rejected') {
+          debugPrint('op rejected: ${r['reason']}');
+        }
       }
       // Every status is final, including rejected: resending cannot help.
       final done = {for (final r in results) r['op_id'] as String};
@@ -204,7 +236,9 @@ class Db extends ChangeNotifier {
 
   Future<void> _pull() async {
     for (;;) {
-      final res = await _http.get(_url('/sync/pull?since=$cursor&limit=500')).timeout(_timeout);
+      final res = await _http
+          .get(_url('/sync/pull?since=$cursor&limit=500'))
+          .timeout(_timeout);
       if (res.statusCode != 200) throw Exception('pull ${res.statusCode}');
       final page = jsonDecode(res.body) as Json;
       final b = _sql.batch();
@@ -221,12 +255,16 @@ class Db extends ChangeNotifier {
         }
         final e = Entity(server);
         entities['${e.kind}:${e.id}'] = e;
-        b.insert('entities', {'key': '${e.kind}:${e.id}', 'json': jsonEncode(server)},
-            conflictAlgorithm: ConflictAlgorithm.replace);
+        b.insert('entities', {
+          'key': '${e.kind}:${e.id}',
+          'json': jsonEncode(server),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
       cursor = page['cursor'] as int;
-      b.insert('meta', {'k': 'cursor', 'v': '$cursor'},
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      b.insert('meta', {
+        'k': 'cursor',
+        'v': '$cursor',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
       await b.commit(noResult: true);
       _bump();
       if (page['has_more'] != true) break;
@@ -247,16 +285,26 @@ class Db extends ChangeNotifier {
     void retry() {
       if (gen != _wsGen || _disposed) return;
       _wsTimer = Timer(_wsDelay, connect);
-      _wsDelay = Duration(milliseconds: min(_wsDelay.inMilliseconds * 2, 30000));
+      _wsDelay = Duration(
+        milliseconds: min(_wsDelay.inMilliseconds * 2, 30000),
+      );
     }
 
     try {
       final ch = WebSocketChannel.connect(
-          Uri.parse('${serverUrl.replaceFirst(RegExp('^http'), 'ws')}/sync/ws'));
+        Uri.parse('${serverUrl.replaceFirst(RegExp('^http'), 'ws')}/sync/ws'),
+      );
       _ws = ch;
-      ch.ready.then((_) => _wsDelay = const Duration(seconds: 1), onError: (_) {});
-      ch.stream.listen((_) => unawaited(sync()),
-          onDone: retry, onError: (_) => retry(), cancelOnError: true);
+      ch.ready.then(
+        (_) => _wsDelay = const Duration(seconds: 1),
+        onError: (_) {},
+      );
+      ch.stream.listen(
+        (_) => unawaited(sync()),
+        onDone: retry,
+        onError: (_) => retry(),
+        cancelOnError: true,
+      );
     } on FormatException {
       _setState(SyncState.offline);
     }

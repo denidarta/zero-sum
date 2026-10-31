@@ -50,3 +50,35 @@ jobs:
           cache: true
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - run: clients/android/tool/test.sh
+
+  # The one step the host tests cannot cover: cross-compile the core for Android,
+  # package it, and check the APK carries the library for every ABI.
+  android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: clients/android/tool/build_core.sh
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+      - run: flutter build apk --debug
+        working-directory: clients/android
+      - run: |
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            unzip -l build/app/outputs/flutter-apk/app-debug.apk | grep "lib/$abi/libzero_sum_ffi_c.so"
+          done
+        working-directory: clients/android

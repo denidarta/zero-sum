@@ -1126,12 +1126,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "zero-sum-ffi"
+name = "zero-sum-ffi-c"
 version = "0.1.0"
 dependencies = [
- "serde",
  "serde_json",
- "uuid",
  "zero-sum-core",
 ]
 
@@ -1158,9 +1156,6 @@ dependencies = [
 name = "zero-sum-wasm"
 version = "0.1.0"
 dependencies = [
- "serde",
- "serde_json",
- "uuid",
  "wasm-bindgen",
  "zero-sum-core",
 ]

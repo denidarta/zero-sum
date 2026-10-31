@@ -24,8 +24,14 @@ late Directory tmp;
 const month = '2026-10';
 
 Future<Db> device(Net net, {String? file}) async {
-  final sql = await databaseFactoryFfi.openDatabase(file ?? inMemoryDatabasePath,
-      options: OpenDatabaseOptions(version: 1, onCreate: Db.create));
+  final sql = await databaseFactoryFfi.openDatabase(
+    file ?? inMemoryDatabasePath,
+    options: OpenDatabaseOptions(
+      version: 1,
+      onCreate: Db.create,
+      singleInstance: false,
+    ),
+  );
   final db = await Db.open(sql, client: net);
   await db.setServer(base);
   return db;
@@ -43,27 +49,36 @@ Map<String, dynamic> budgetOf(Db db) =>
     Core.instance.budget([for (final e in db.entities.values) e.json], month);
 
 Future<Map<String, dynamic>> serverBudget() async =>
-    jsonDecode((await http.get(Uri.parse('$base/budget/$month'))).body) as Map<String, dynamic>;
+    jsonDecode((await http.get(Uri.parse('$base/budget/$month'))).body)
+        as Map<String, dynamic>;
 
 void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     final bin = Platform.environment['ZERO_SUM_SERVER'];
     if (bin == null || Platform.environment['ZERO_SUM_FFI'] == null) {
-      throw StateError('set ZERO_SUM_SERVER and ZERO_SUM_FFI, or run tool/test.sh');
+      throw StateError(
+        'set ZERO_SUM_SERVER and ZERO_SUM_FFI, or run tool/test.sh',
+      );
     }
     tmp = Directory.systemTemp.createTempSync('zs');
     final s = await ServerSocket.bind('127.0.0.1', 0);
     final port = s.port;
     await s.close();
     base = 'http://127.0.0.1:$port';
-    server = await Process.start(bin, [], environment: {
-      'ZERO_SUM_ADDR': '127.0.0.1:$port',
-      'ZERO_SUM_DB': '${tmp.path}/server.db',
-    });
+    server = await Process.start(
+      bin,
+      [],
+      environment: {
+        'ZERO_SUM_ADDR': '127.0.0.1:$port',
+        'ZERO_SUM_DB': '${tmp.path}/server.db',
+      },
+    );
     for (var i = 0; i < 100; i++) {
       try {
-        if ((await http.get(Uri.parse('$base/health'))).statusCode == 200) return;
+        if ((await http.get(Uri.parse('$base/health'))).statusCode == 200) {
+          return;
+        }
       } catch (_) {}
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
@@ -81,12 +96,22 @@ void main() {
     await a.edit('account', acct, {'name': 'Checking', 'kind': 'checking'});
     await a.edit('category_group', group, {'name': 'Needs'});
     await a.edit('category', food, {'group_id': group, 'name': 'Food'});
-    await a.edit('transaction', newId(),
-        {'account_id': acct, 'date': '2026-10-01', 'amount': 3000000});
-    await a.edit('transaction', newId(),
-        {'account_id': acct, 'date': '2026-10-05', 'amount': -400000, 'category_id': food});
-    await a.edit('budget_entry', Core.instance.budgetEntryId(food, month),
-        {'category_id': food, 'month': month, 'assigned': 500000});
+    await a.edit('transaction', newId(), {
+      'account_id': acct,
+      'date': '2026-10-01',
+      'amount': 3000000,
+    });
+    await a.edit('transaction', newId(), {
+      'account_id': acct,
+      'date': '2026-10-05',
+      'amount': -400000,
+      'category_id': food,
+    });
+    await a.edit('budget_entry', Core.instance.budgetEntryId(food, month), {
+      'category_id': food,
+      'month': month,
+      'assigned': 500000,
+    });
     await a.sync();
     expect(a.outbox, isEmpty);
 
@@ -123,8 +148,14 @@ void main() {
 
     for (final d in [a, b]) {
       expect(d.outbox, isEmpty);
-      expect(d.get('account', acct)!.data['name'], 'Wallet B'); // later write wins
-      expect(d.get('account', acct)!.data['note'], 'from A'); // other field kept
+      expect(
+        d.get('account', acct)!.data['name'],
+        'Wallet B',
+      ); // later write wins
+      expect(
+        d.get('account', acct)!.data['note'],
+        'from A',
+      ); // other field kept
     }
     expect(a.get('account', acct)!.json, b.get('account', acct)!.json);
   });
@@ -159,14 +190,51 @@ void main() {
     await d.sync();
     expect(d.outbox, isEmpty);
     expect(d.cursor, greaterThan(0));
-    final pull = jsonDecode((await http.get(Uri.parse('$base/sync/pull?since=0'))).body);
+    final pull = jsonDecode(
+      (await http.get(Uri.parse('$base/sync/pull?since=0'))).body,
+    );
     expect((pull['changes'] as List).any((c) => c['id'] == id), isTrue);
   });
 
   test('invalid edit throws and queues nothing', () async {
     final d = await device(Net());
-    expect(() => d.edit('account', newId(), {'nmae': 'x'}), throwsA(isA<CoreException>()));
+    expect(
+      () => d.edit('account', newId(), {'nmae': 'x'}),
+      throwsA(isA<CoreException>()),
+    );
     expect(d.outbox, isEmpty);
+  });
+
+  test('failed disk write leaves no ghost edit', () async {
+    final sql = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: Db.create,
+        singleInstance: false,
+      ),
+    );
+    final d = await Db.open(sql, client: Net()..online = false);
+    await sql.close();
+    final id = newId();
+    await expectLater(
+      d.edit('payee', id, {'name': 'Ghost'}),
+      throwsA(anything),
+    );
+    expect(d.outbox, isEmpty);
+    expect(d.get('payee', id), isNull);
+  });
+
+  test('concurrent edits to one entity both survive', () async {
+    final d = await device(Net()..online = false);
+    final id = newId();
+    await Future.wait([
+      d.edit('account', id, {'name': 'A', 'kind': 'cash'}),
+      d.edit('account', id, {'note': 'n'}),
+    ]);
+    expect(d.get('account', id)!.data, containsPair('name', 'A'));
+    expect(d.get('account', id)!.data, containsPair('note', 'n'));
+    expect(d.outbox, hasLength(2));
   });
 
   test('WebSocket nudge pulls without a manual sync', () async {

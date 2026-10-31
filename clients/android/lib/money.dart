@@ -3,9 +3,9 @@ String fmt(int ms) {
   final sign = ms < 0 ? '-' : '';
   final cents = (ms.abs() / 10).round();
   final whole = (cents ~/ 100).toString().replaceAllMapped(
-        RegExp(r'\B(?=(\d{3})+(?!\d))'),
-        (_) => ',',
-      );
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (_) => ',',
+  );
   return '$sign$whole.${(cents % 100).toString().padLeft(2, '0')}';
 }
 

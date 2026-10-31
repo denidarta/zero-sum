@@ -108,7 +108,7 @@ Not modelled yet: split transactions, credit card payment categories, goals and 
 The merge rules and budget math are the part most likely to diverge between three codebases, and divergence means different numbers on different devices. So they live once, in `zero-sum-core`:
 
 - iOS calls it through UniFFI bindings.
-- Android (Flutter) calls it through a small C ABI (`crates/ffi`, JSON strings) with `dart:ffi`. Same shape as the WASM crate. No code generator.
+- Android (Flutter) calls it through a small C ABI (`crates/ffi-c`, JSON strings) with `dart:ffi`. Same shape as the WASM crate. No code generator.
 - Web calls it as WASM.
 - The server links it directly.
 

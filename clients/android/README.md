@@ -2,7 +2,7 @@
 
 Flutter app. Offline-first: all reads and writes hit local SQLite (`sqflite`). Edits queue in an outbox and sync to the Rust server by op-log push and pull. A WebSocket only nudges "pull now". Same protocol and behaviour as `clients/web`.
 
-Merge rules and budget math are not re-implemented in Dart. The app calls the shared `zero-sum-core` through `crates/ffi` (C ABI, JSON strings) with `dart:ffi`, so Android shows the same numbers as the server and web.
+Merge rules and budget math are not re-implemented in Dart. The app calls the shared `zero-sum-core` through `crates/ffi-c` (C ABI, JSON strings) with `dart:ffi`, so Android shows the same numbers as the server and web.
 
 ## Layout
 
@@ -28,4 +28,4 @@ clients/android/tool/build_core.sh     # Rust core into jniLibs (needs Android N
 cd clients/android && flutter run      # or: flutter build apk
 ```
 
-On first launch the app asks for the server URL, for example `https://<mac-mini>.<tailnet>.ts.net`. Change it later with the gear icon. Cleartext HTTP is allowed so a raw tailnet address works; prefer `tailscale serve` HTTPS.
+On first launch the app asks for the server URL, for example `https://<mac-mini>.<tailnet>.ts.net`. Change it later with the gear icon. Release builds accept HTTPS only (use `tailscale serve`). Debug builds also allow plain `http://`.

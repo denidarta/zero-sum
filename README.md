@@ -9,7 +9,7 @@ Design and decisions: [docs/architecture.md](docs/architecture.md).
 - `crates/core`: entity model, sync merge rules, budget math. No I/O. Shared with clients.
 - `crates/server`: axum HTTP and WebSocket server, SQLite storage.
 - `crates/wasm`: `core` compiled to WASM for the web client.
-- `crates/ffi`: `core` behind a C ABI for the Android client.
+- `crates/ffi-c`: `core` behind a C ABI for the Android client.
 - `clients/android`: offline-first Flutter app. Calls the same Rust core through `dart:ffi`. See its README.
 - `clients/web`: offline-first web app (Preact, TypeScript, PWA). Runs the same Rust merge and budget code as the server.
 
