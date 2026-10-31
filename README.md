@@ -9,6 +9,8 @@ Design and decisions: [docs/architecture.md](docs/architecture.md).
 - `crates/core`: entity model, sync merge rules, budget math. No I/O. Shared with clients.
 - `crates/server`: axum HTTP and WebSocket server, SQLite storage.
 - `crates/wasm`: `core` compiled to WASM for the web client.
+- `crates/ffi-uniffi`: `core` behind UniFFI for the iOS client.
+- `clients/ios`: native iOS app (Swift, SwiftUI, SQLite via GRDB). Runs the same Rust merge and budget code as the server.
 - `clients/web`: offline-first web app (Preact, TypeScript, PWA). Runs the same Rust merge and budget code as the server.
 
 ## Run
@@ -39,6 +41,21 @@ ZERO_SUM_WEB_DIR=clients/web/dist cargo run -p zero-sum-server
 Open http://127.0.0.1:8787. The server serves the app from the same origin, so there is no CORS to configure. For development, `npm run dev` proxies API calls to a server on port 8787.
 
 End-to-end test (two browsers, offline edit, convergence): `node clients/web/e2e/smoke.mjs`. It needs Playwright and a built server and client.
+
+## iOS client
+
+Needs macOS, Xcode 16+, rustup and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+
+```sh
+scripts/build-ios-core.sh        # Rust core -> XCFramework + Swift bindings. Rerun after changing crates/.
+cd clients/ios
+xcodegen                         # writes ZeroSum.xcodeproj from project.yml
+open ZeroSum.xcodeproj           # pick your team under Signing, then run
+```
+
+In the app, open Settings and enter the server address, for example the `tailscale serve` URL. Edits work offline and sync when the server is reachable.
+
+Tests: `swift test` in `clients/ios` (set `ZERO_SUM_TEST_SERVER=http://127.0.0.1:8787` with a server running to include the end-to-end tests). iOS 17 or later. The simulator slice is arm64 only (Apple Silicon Macs).
 
 ## Try it
 
