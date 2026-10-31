@@ -2,7 +2,7 @@
 
 Private, single-user envelope budgeting (YNAB style). One Rust server on a Mac mini. Three clients: iOS, Android, web. All stay in sync. No accounts, no login.
 
-This document records the decisions and why. Status: server, shared core and web client are in this repo. iOS and Android clients are not started.
+This document records the decisions and why. Status: server, shared core and web client are in this repo. The Android client (Flutter) is in this repo. iOS is not started.
 
 ## Decisions at a glance
 
@@ -97,17 +97,18 @@ Not modelled yet: split transactions, credit card payment categories, goals and 
 
 ## Clients
 
-**Choice: native on iOS and Android, a PWA on web, all sharing one Rust core.**
+**Choice (Deni, 2026-10-31): native Swift on iOS, Flutter on Android, a PWA on web, all sharing one Rust core.**
 
 | Client | Stack | Local store |
 | --- | --- | --- |
 | iOS | Swift, SwiftUI | SQLite via GRDB |
-| Android | Kotlin, Jetpack Compose | SQLite via Room |
+| Android | Flutter (Dart) | SQLite via sqflite |
 | Web | TypeScript, a PWA | SQLite in WASM (OPFS) or IndexedDB |
 
 The merge rules and budget math are the part most likely to diverge between three codebases, and divergence means different numbers on different devices. So they live once, in `zero-sum-core`:
 
-- iOS and Android call it through UniFFI bindings.
+- iOS calls it through UniFFI bindings.
+- Android (Flutter) calls it through a small C ABI (`crates/ffi`, JSON strings) with `dart:ffi`. Same shape as the WASM crate. No code generator.
 - Web calls it as WASM.
 - The server links it directly.
 

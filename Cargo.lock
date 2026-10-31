@@ -1126,6 +1126,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zero-sum-ffi"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
+ "zero-sum-core",
+]
+
+[[package]]
 name = "zero-sum-server"
 version = "0.1.0"
 dependencies = [
