@@ -11,6 +11,8 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+    # The Rust core is built for arm64 simulators only, see scripts/build-ios-core.sh.
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
 targets:
   ZeroSum:
     type: application
