@@ -56,6 +56,13 @@ tr.add td { border-bottom: 0; padding-top: 0; }
 .inline { display: flex; gap: 6px; margin: 8px 0; }
 .txform { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 16px; }
 .memo { color: var(--muted); }
+.modes { display: flex; gap: 4px; flex-basis: 100%; }
+.splits { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.err { flex-basis: 100%; color: var(--neg); margin: 0; }
+.modal { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+.modal p { margin-top: 0; }
+select.move { margin-left: 8px; }
+button:disabled { opacity: .5; cursor: default; }
 .empty { color: var(--muted); }
 @media (max-width: 720px) {
   .layout { grid-template-columns: 1fr; }
