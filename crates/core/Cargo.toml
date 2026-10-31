@@ -1,0 +1,11 @@
+[package]
+name = "zero-sum-core"
+description = "Pure data model, sync merge rules and budget math. No I/O. Reused by every client."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v5", "serde"] }
