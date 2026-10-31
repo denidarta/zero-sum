@@ -9,7 +9,10 @@
 //!   to 0 and is subtracted from the next month's Ready to Assign.
 //! - Credit-card payment categories are not modelled yet.
 
-use crate::model::{parse_date, parse_month, Account, BudgetEntry, Category, Transaction};
+use crate::model::{
+    parse_data, parse_date, parse_month, Account, BudgetEntry, Category, Kind, Transaction,
+};
+use crate::sync::EntityState;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
@@ -20,6 +23,25 @@ pub struct Snapshot {
     pub categories: Vec<(Uuid, Category)>,
     pub transactions: Vec<Transaction>,
     pub entries: Vec<BudgetEntry>,
+}
+
+impl Snapshot {
+    /// Collect the live (not deleted) entities that budget math needs.
+    pub fn from_entities<'a>(
+        entities: impl IntoIterator<Item = &'a EntityState>,
+    ) -> Result<Snapshot, String> {
+        let mut snap = Snapshot::default();
+        for e in entities.into_iter().filter(|e| !e.deleted) {
+            match e.kind {
+                Kind::Account => snap.accounts.push((e.id, parse_data(&e.data)?)),
+                Kind::Category => snap.categories.push((e.id, parse_data(&e.data)?)),
+                Kind::Transaction => snap.transactions.push(parse_data(&e.data)?),
+                Kind::BudgetEntry => snap.entries.push(parse_data(&e.data)?),
+                Kind::CategoryGroup | Kind::Payee => {}
+            }
+        }
+        Ok(snap)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

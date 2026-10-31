@@ -2,7 +2,7 @@
 
 Private, single-user envelope budgeting (YNAB style). One Rust server on a Mac mini. Three clients: iOS, Android, web. All stay in sync. No accounts, no login.
 
-This document records the decisions and why. Status: proposed. Server and shared core are scaffolded in this repo. Clients are not started.
+This document records the decisions and why. Status: server, shared core and web client are in this repo. iOS and Android clients are not started.
 
 ## Decisions at a glance
 
@@ -119,6 +119,8 @@ Alternatives considered:
 - **Web app only, installed to home screens.** Cheapest by far, but weak offline and background behaviour on iOS. Worth building first as a prototype, since the web client is needed anyway.
 
 Suggested order: web first (fastest feedback on the model), then iOS, then Android.
+
+Status: the web client exists in `clients/web`. It uses IndexedDB for local storage, a service worker for offline loading, and the Rust core through `crates/wasm`. The server can serve it from the same origin (`ZERO_SUM_WEB_DIR`). iOS and Android are not started.
 
 ## Reaching the Mac mini safely
 
