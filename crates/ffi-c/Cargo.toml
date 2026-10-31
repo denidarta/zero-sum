@@ -1,0 +1,13 @@
+[package]
+name = "zero-sum-ffi-c"
+description = "C ABI of zero-sum-core for the Flutter (Android) client, called through dart:ffi."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+zero-sum-core = { path = "../core" }
+serde_json = "1"
