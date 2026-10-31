@@ -82,7 +82,7 @@ All amounts are `i64` milliunits (1000 = 1.00). Inflow positive, outflow negativ
 - `account`: name, kind, `on_budget`, closed.
 - `category_group` and `category`: name, order, hidden.
 - `payee`: name.
-- `transaction`: account, date (`YYYY-MM-DD`), amount, payee, category, optional `transfer_account_id`, memo, cleared.
+- `transaction`: account, date (`YYYY-MM-DD`), amount, payee, category, optional `transfer_account_id` and `transfer_transaction_id` (the other leg), optional `splits` (category lines that sum to the amount), memo, cleared.
 - `budget_entry`: category, month (`YYYY-MM`), assigned.
 
 Budget rules (in `crates/core/src/budget.rs`):
@@ -92,8 +92,10 @@ Budget rules (in `crates/core/src/budget.rs`):
 - Negative available resets to 0 and reduces next month's Ready to Assign.
 - An uncategorized inflow in an on-budget account is income.
 - A transfer between two on-budget accounts is ignored. Off-budget accounts never count.
+- A transaction whose category is deleted counts as uncategorized. Split lines are attributed one by one.
+- A category whose group is missing or deleted is listed in `orphaned_category_ids`. Clients show these under an Orphaned group.
 
-Not modelled yet: split transactions, credit card payment categories, goals and targets, scheduled transactions, reconciliation, multiple budgets, currencies.
+Not modelled yet: credit card payment categories, goals and targets, scheduled transactions, reconciliation, multiple budgets, currencies.
 
 ## Clients
 

@@ -1,6 +1,6 @@
 # Ledger edits spec: deletes, transfers, splits, editing
 
-Status: draft. Decisions below were made by Deni in the planning thread on 2026-10-31. Nothing here is implemented yet. Open items are listed at the end.
+Status: core rules implemented (PR 1). Clients not yet. Decisions below were made by Deni in the planning thread on 2026-10-31. Open items are listed at the end.
 
 ## Problem
 
