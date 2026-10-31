@@ -1,0 +1,25 @@
+[package]
+name = "zero-sum-ffi"
+description = "UniFFI bindings of zero-sum-core for the iOS client."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lib]
+# staticlib is what the XCFramework wraps. rlib lets `cargo test` link the crate.
+crate-type = ["staticlib", "lib"]
+
+[features]
+# Pulls the bindgen CLI. Only needed to generate Swift, see scripts/build-ios-core.sh.
+bindgen = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+required-features = ["bindgen"]
+
+[dependencies]
+zero-sum-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = "1"
+uniffi = "0.29"

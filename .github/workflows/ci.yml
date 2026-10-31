@@ -37,3 +37,29 @@ jobs:
         working-directory: clients/web
       - run: npm run build
         working-directory: clients/web
+
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the Rust core for Apple platforms
+        run: scripts/build-ios-core.sh
+      - name: Start a server for the end-to-end tests
+        run: |
+          cargo build -p zero-sum-server
+          ZERO_SUM_ADDR=127.0.0.1:8787 ZERO_SUM_DB="$RUNNER_TEMP/e2e.db" target/debug/zero-sum-server &
+          for i in $(seq 1 50); do curl -sf http://127.0.0.1:8787/health && break; sleep 0.2; done
+      - name: Swift tests
+        working-directory: clients/ios
+        env:
+          ZERO_SUM_TEST_SERVER: http://127.0.0.1:8787
+        run: swift test
+      - name: Build the app for the simulator
+        working-directory: clients/ios
+        run: |
+          brew install xcodegen
+          xcodegen
+          xcodebuild build -project ZeroSum.xcodeproj -scheme ZeroSum \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
