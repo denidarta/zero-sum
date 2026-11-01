@@ -6,5 +6,6 @@
 
 pub mod budget;
 pub mod json;
+pub mod ledger;
 pub mod model;
 pub mod sync;

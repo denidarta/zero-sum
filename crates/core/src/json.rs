@@ -5,6 +5,7 @@
 
 use crate::{
     budget::{compute, Snapshot},
+    ledger::{self, Command},
     model::budget_entry_id,
     sync::{apply, EntityState, Op},
 };
@@ -39,6 +40,15 @@ pub fn budget(entities_json: &str, month: &str) -> Result<String, String> {
     let entities: Vec<EntityState> = serde_json::from_str(entities_json).map_err(err)?;
     let snap = Snapshot::from_entities(&entities)?;
     serde_json::to_string(&compute(&snap, month)?).map_err(err)
+}
+
+/// Turn a ledger action (see [`Command`]) into a JSON array of patches
+/// `{kind, id, fields, deleted}` over a JSON array of entity states.
+/// The error text is fit to show to the user.
+pub fn plan(entities_json: &str, command_json: &str) -> Result<String, String> {
+    let entities: Vec<EntityState> = serde_json::from_str(entities_json).map_err(err)?;
+    let command: Command = serde_json::from_str(command_json).map_err(err)?;
+    serde_json::to_string(&ledger::plan(&entities, &command)?).map_err(err)
 }
 
 /// Deterministic id of the budget entry for a category and month.
@@ -87,6 +97,33 @@ mod tests {
             "entity_id": "00000000-0000-4000-8000-000000000099", "fields": {"nmae": "x"},
         });
         assert!(merge("null", &bad.to_string()).is_err());
+    }
+
+    #[test]
+    fn plan_returns_patches_or_a_user_facing_error() {
+        let cmd = |from: &str| {
+            json!({
+                "command": "add_transfer", "ids": [CAT, CAT], "date": "2026-10-02",
+                "from": from, "to": from, "amount": 5,
+            })
+            .to_string()
+        };
+        assert_eq!(
+            plan("[]", &cmd(CAT)).unwrap_err(),
+            "Pick two different accounts."
+        );
+        let v = parse(
+            plan(
+                "[]",
+                &json!({"command": "delete_empty_category", "category_id": CAT}).to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            v[0],
+            json!({"kind": "category", "id": CAT, "fields": {}, "deleted": true})
+        );
+        assert!(plan("[]", "{}").is_err());
     }
 
     #[test]
