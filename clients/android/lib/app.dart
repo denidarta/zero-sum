@@ -290,6 +290,13 @@ class _BudgetPageState extends State<BudgetPage> {
       for (final id in (b['orphaned_category_ids'] as List?) ?? const [])
         id as String,
     };
+    final cardPayments = [
+      for (final r in (b['card_payments'] as List?) ?? const [])
+        r as Map<String, dynamic>,
+    ];
+    final accountNames = {
+      for (final a in db.list('account')) a.id: a.str('name'),
+    };
     final theme = Theme.of(context);
     final red = theme.colorScheme.error;
 
@@ -370,6 +377,27 @@ class _BudgetPageState extends State<BudgetPage> {
                     }
                   },
                 ),
+              ],
+              // Credit card payment categories: derived rows, but money can be assigned to them.
+              if (cardPayments.isNotEmpty) ...[
+                Container(
+                  key: const Key('card-payments'),
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: const ListTile(
+                    dense: true,
+                    title: Text(
+                      'Credit Card Payments',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                for (final r in cardPayments)
+                  _CardPaymentRow(
+                    db: db,
+                    month: widget.month,
+                    row: r,
+                    name: accountNames[r['account_id']] ?? 'Card',
+                  ),
               ],
               // D2: categories whose group is gone stay visible, so no money hides.
               if (orphaned.isNotEmpty) ...[
@@ -519,6 +547,65 @@ class _CategoryRow extends StatelessWidget {
             'budget_entry',
             Core.instance.budgetEntryId(cat.id, month),
             {'category_id': cat.id, 'month': month, 'assigned': v},
+          );
+        } catch (e) {
+          if (context.mounted) _toast(context, e);
+        }
+      },
+    );
+  }
+}
+
+/// The payment category of one credit card. Money can be assigned to it like to a category.
+class _CardPaymentRow extends StatelessWidget {
+  const _CardPaymentRow({
+    required this.db,
+    required this.month,
+    required this.row,
+    required this.name,
+  });
+  final Db db;
+  final String month;
+  final Map<String, dynamic> row;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final categoryId = row['category_id'] as String;
+    final assigned = row['assigned'] as int;
+    final available = row['available'] as int;
+    final red = Theme.of(context).colorScheme.error;
+    return ListTile(
+      key: Key('card-$name'),
+      title: Text(name),
+      subtitle: Text(
+        'Assigned ${fmt(assigned)}  ·  Activity ${fmt(row['activity'] as int)}',
+      ),
+      trailing: Text(
+        fmt(available),
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: available < 0 ? red : null,
+        ),
+      ),
+      onTap: () async {
+        final text = await promptText(
+          context,
+          'Assigned to $name',
+          initial: fmt(assigned),
+          keyboard: const TextInputType.numberWithOptions(
+            decimal: true,
+            signed: true,
+          ),
+        );
+        if (text == null) return;
+        final v = parseAmount(text);
+        if (v == null || v == assigned) return;
+        try {
+          await db.edit(
+            'budget_entry',
+            Core.instance.budgetEntryId(categoryId, month),
+            {'category_id': categoryId, 'month': month, 'assigned': v},
           );
         } catch (e) {
           if (context.mounted) _toast(context, e);
