@@ -131,10 +131,7 @@ impl Store {
     /// Entities changed after `since`, oldest first.
     pub fn pull(&self, since: i64, limit: usize) -> Result<PullPage> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT kind, id, data, stamps, deleted, seq FROM entities
-             WHERE seq > ?1 ORDER BY seq LIMIT ?2",
-        )?;
+        let mut stmt = conn.prepare(&format!("{SELECT} WHERE seq > ?1 ORDER BY seq LIMIT ?2"))?;
         let mut changes = stmt
             .query_map(params![since, limit as i64 + 1], row_to_change)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -154,9 +151,7 @@ impl Store {
     /// All live entities, typed, for budget math.
     pub fn snapshot(&self) -> Result<Snapshot> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT kind, id, data, stamps, deleted, seq FROM entities WHERE deleted = 0 ORDER BY id",
-        )?;
+        let mut stmt = conn.prepare(&format!("{SELECT} WHERE deleted = 0 ORDER BY id"))?;
         let changes = stmt
             .query_map([], row_to_change)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -164,6 +159,9 @@ impl Store {
         Snapshot::from_entities(changes.iter().map(|c| &c.entity)).map_err(anyhow::Error::msg)
     }
 }
+
+/// The columns `row_to_change` reads, in order.
+const SELECT: &str = "SELECT kind, id, data, stamps, deleted, seq FROM entities";
 
 fn result(op: &Op, status: OpStatus, reason: Option<String>) -> OpResult {
     OpResult {
@@ -180,7 +178,7 @@ fn head(conn: &Connection) -> Result<i64> {
 fn load_entity(conn: &Connection, kind: Kind, id: Uuid) -> Result<Option<EntityState>> {
     let row = conn
         .query_row(
-            "SELECT kind, id, data, stamps, deleted, seq FROM entities WHERE kind = ?1 AND id = ?2",
+            &format!("{SELECT} WHERE kind = ?1 AND id = ?2"),
             params![kind.as_str(), id.to_string()],
             row_to_change,
         )
