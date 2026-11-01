@@ -95,7 +95,8 @@ For month `m`, category `c`, card `a`:
 
 - Credit overspending resets the category and leaves the payment category short (rule 5). The alternative, carrying it as negative available, needs a per-category credit balance and double-counts easily. I could not fetch YNAB's help pages to confirm which one YNAB does. The import check settles it.
 - Verification against real YNAB data belongs to the importer project, not this one. This project ships with hand-computed tests and the rules are unverified until the import runs.
-- Card starting balance: keep today's behaviour (an uncategorized card outflow reduces Ready to Assign). Revisit after the import check.
+- Card starting balance, fees and any uncategorized card outflow: unfunded debt. It does not touch Ready to Assign when entered. Paying the card takes the payment row negative, which reduces Ready to Assign once (rule 8). Changed after the final review: the first version charged it twice. Revisit after the import check.
+- Rule 1 excludes transfers between on-budget accounts only. A categorized card transfer to an off-budget account (D5) is card spending. A transfer from one card to another is a balance transfer, not a payment (rule 7).
 - Cards that are closed still count in category math. A card switched to off-budget has no row and its transactions are skipped, as for any off-budget account. A `budget_entry` for an unknown payment id is ignored, so that money returns to Ready to Assign.
 - Allocation across cards is greedy (rule 6).
 

@@ -138,6 +138,7 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
         .map(|(id, a)| (*id, a.closed))
         .collect();
     cards.sort();
+    let card_ids: HashSet<Uuid> = cards.iter().map(|(id, _)| *id).collect();
     let card_by_payment_id: HashMap<Uuid, Uuid> = cards
         .iter()
         .map(|(id, _)| (card_payment_id(*id), *id))
@@ -165,12 +166,13 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
         if !on_budget.contains(&t.account_id) {
             continue;
         }
-        let is_card = card_by_payment_id.values().any(|c| *c == t.account_id);
-        // A payment: money into the card from another on-budget account.
+        let is_card = card_ids.contains(&t.account_id);
+        // A payment: money into the card from an on-budget account that is not a card.
+        // A balance transfer between cards moves debt, it does not pay it.
         if is_card
             && t.amount > 0
             && t.transfer_account_id
-                .is_some_and(|f| on_budget.contains(&f))
+                .is_some_and(|f| on_budget.contains(&f) && !card_ids.contains(&f))
         {
             let m = Ym::of_date(&t.date).ok_or("transaction with bad date")?;
             *card_paid.entry((t.account_id, m)).or_default() += t.amount;
@@ -194,10 +196,13 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
             match cat {
                 Some(c) if cat_set.contains(&c) => {
                     *activity.entry((c, m)).or_default() += amount;
-                    if is_card && t.transfer_account_id.is_none() {
+                    if is_card {
                         *card_spend.entry((c, t.account_id, m)).or_default() -= amount;
                     }
                 }
+                // Card debt with no category (opening balance, fees): unfunded. It reaches
+                // Ready to Assign once, when the card is paid and its row goes negative.
+                _ if is_card && t.transfer_account_id.is_none() && amount < 0 => {}
                 // Uncategorized, or its category was deleted: counts against Ready to Assign.
                 _ => *income.entry(m).or_default() += amount,
             }
@@ -695,6 +700,40 @@ mod tests {
         let b = compute(&s, "2026-09").unwrap();
         assert_eq!(row(&b, 11).available, 130_000);
         assert_eq!(card_row(&b, 4).activity, -30_000);
+    }
+
+    #[test]
+    fn uncategorized_card_outflow_is_charged_once() {
+        let mut s = snap_with_card();
+        s.transactions = vec![
+            tx(1, "2026-10-01", 1_000_000, None),
+            tx(4, "2026-10-02", -500_000, None), // card starting debt
+        ];
+        s.transactions.extend(transfer(1, 4, "2026-10-20", 500_000));
+        assert_eq!(compute(&s, "2026-11").unwrap().ready_to_assign, 500_000);
+    }
+
+    #[test]
+    fn card_spend_sent_to_an_off_budget_account_moves_to_the_row() {
+        let mut s = funded_card_snap();
+        let mut spend = tx(4, "2026-10-05", -200_000, Some(11));
+        spend.transfer_account_id = Some(id(3));
+        s.transactions.push(spend);
+        s.transactions.extend(transfer(1, 4, "2026-10-25", 200_000));
+        let oct = compute(&s, "2026-10").unwrap();
+        assert_eq!(card_row(&oct, 4).available, 0);
+        assert_eq!(compute(&s, "2026-11").unwrap().ready_to_assign, 500_000);
+    }
+
+    #[test]
+    fn balance_transfer_between_cards_is_not_a_payment() {
+        let mut s = funded_card_snap();
+        s.accounts.push((id(5), card_account(false)));
+        s.transactions.push(tx(4, "2026-10-05", -200_000, Some(11)));
+        s.transactions.extend(transfer(4, 5, "2026-10-20", 200_000));
+        let oct = compute(&s, "2026-10").unwrap();
+        assert_eq!(card_row(&oct, 5).available, 0);
+        assert_eq!(compute(&s, "2026-11").unwrap().ready_to_assign, 500_000);
     }
 
     #[test]
