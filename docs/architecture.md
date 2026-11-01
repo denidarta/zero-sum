@@ -107,7 +107,7 @@ Not modelled yet: credit card payment categories, goals and targets, scheduled t
 | Android | Flutter (Dart) | SQLite via sqflite |
 | Web | TypeScript, a PWA | SQLite in WASM (OPFS) or IndexedDB |
 
-The merge rules and budget math are the part most likely to diverge between three codebases, and divergence means different numbers on different devices. So they live once, in `zero-sum-core`:
+The merge rules, budget math and ledger edit rules (transfers, deleting categories; `core::ledger`) are the part most likely to diverge between three codebases, and divergence means different numbers on different devices. So they live once, in `zero-sum-core`. Ledger rules are exposed as `plan(entities, command) -> patches`; each client writes the patches with its own edit call:
 
 - iOS calls it through UniFFI bindings.
 - Android (Flutter) calls it through a small C ABI (`crates/ffi-c`, JSON strings) with `dart:ffi`. Same shape as the WASM crate. No code generator.

@@ -1,6 +1,6 @@
 # Ledger edits spec: deletes, transfers, splits, editing
 
-Status: core, web and iOS implemented. Android not yet. Decisions below were made by Deni in the planning thread on 2026-10-31. Open items are listed at the end.
+Status: core, web, iOS and Android implemented. The transfer and category rules (D3, D4, D5, D8) live in `crates/core/src/ledger.rs` (`plan`); the clients only write the patches it returns. Decisions below were made by Deni in the planning thread on 2026-10-31. Open items are listed at the end.
 
 ## Problem
 
@@ -18,7 +18,7 @@ Block the delete while the group still has live categories. The client tells the
 
 Merge stays order-independent, so the server never rejects a group delete. Another device can still create a category in a group that a second device deletes offline. Clients must show any live category whose group is missing or deleted under a synthetic **Orphaned** group. The user can move or delete those categories. Money never becomes invisible.
 
-The grouping rule lives in the shared core so all clients agree. Clients do not reimplement it.
+The grouping rule lives in the shared core so all clients agree. Clients do not reimplement it. The same holds for the transfer and category-delete rules (D3 to D5, D8): see `core::ledger::plan`.
 
 ### D3. Deleting a category
 
