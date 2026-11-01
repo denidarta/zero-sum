@@ -101,14 +101,14 @@ Reference points in this repo: entities in `crates/core/src/model.rs` (`Kind`: a
 - **Transactions**: has the core. Account, date, amount, payee, category, memo, cleared, transfer pair, splits (`model.rs` `Transaction`, `ledger.rs`). Edit and delete rules exist.
 - **Cleared/reconciled/approved**: partially has. `cleared` is a boolean. No `reconciled` state, no `approved`, no reconciliation workflow (architecture: "reconciliation" not modelled).
 - **Flags**: lacks. No `flag_color`.
-- **import_id and dedup**: lacks. No import identifier field on `Transaction` and no importer. Architecture open question 2 asks for a YNAB importer.
+- **import_id and dedup**: lacks, on purpose. Bank import is out of scope (3.6). Architecture open question 2 asks for a YNAB importer; that is 3.1.
 - **Transfers**: has, and richer in places. Two linked legs created client-side by `ledger::plan`, mirror edits (D8), budget-boundary category rule (D5). YNAB creates the other leg server-side via a transfer payee. Our model puts the transfer on the transaction, not on a payee.
 - **Splits / subtransactions**: has, with differences. `Transaction.splits` of `{category_id, amount, memo}` (`model.rs` `Split`). Ours cannot carry per-line payee or transfer (D7); YNAB allows both. Ours are editable as a whole under LWW; YNAB's API cannot edit them.
 - **Scheduled transactions**: lacks. Architecture lists them as not modelled.
 - **Money movements**: lacks. Moves between categories are not a first-class record. A move is two `budget_entry` edits, with no link and no history shown. The op log exists (`ops` table) but no UI reads it.
 - **Deleted flag**: has. Tombstones merged like a field (`sync.rs`, architecture "Deletes are tombstones"). YNAB hides deleted rows outside deltas; our pull always carries them to the client, which needs them to converge.
 - **Bulk create with duplicate reporting**: partially has. `POST /sync/push` takes many ops and reports `applied | stale | duplicate | rejected` per op (architecture). That is op-id dedup, not content dedup.
-- **Server-side matching of imported vs manual transactions**: lacks.
+- **Server-side matching of imported vs manual transactions**: lacks, on purpose (no bank import).
 - **Reports** (spending by category, net worth, age of money): lacks. YNAB's API has none beyond month totals and `age_of_money`.
 
 ## 3. Candidate features
@@ -132,7 +132,7 @@ Common frame. In our design every change is an op, a patch to one entity with a 
 ### 3.2 Payees (first-class)
 
 - **What**: use the existing `payee` entity properly: autocomplete from history, rename, merge, and default category per payee (last used).
-- **Why**: payee is the main speed-up when entering and importing transactions, and is needed by any bank import.
+- **Why**: payee is the main speed-up when entering transactions by hand, since all entry is manual.
 - **How it fits**: rename is one field patch, trivially LWW. Merge is a command in `ledger::plan`: repoint all transactions to the survivor, tombstone the other. Concurrent creation of the same name on two devices makes duplicates; a merge command is the repair, same as YNAB's approach (names resolve to existing payees). Optional deterministic id: UUIDv5 of the normalized name, like `budget_entry_id`, so two offline devices converge on one payee. Keep transfers on the transaction, not a transfer payee, to avoid a second mechanism.
 - **Size**: S for rename and autocomplete, M with merge and default category.
 - **Risks**: deterministic ids make rename awkward (id no longer matches name). Pick one: deterministic ids with merge-on-demand, or random ids with merge. Random ids plus merge is simpler and matches the rest.
@@ -153,21 +153,17 @@ Common frame. In our design every change is an op, a patch to one entity with a 
 - **Size**: L. The goal math is the hard part: YNAB's cadence has 15 values with two different behaviours (repeat-every versus fixed-schedule) and `NEED` has Set Aside versus Refill. Start with `MF` and `TBD`, then `TB`, then `NEED`.
 - **Risks**: exact parity with YNAB is not documented in the API, only field meanings, so our numbers will differ in places; accept and document. Snoozing a goal is per-month state (`goal_snoozed_at`); skip it at first. Old clients with `deny_unknown_fields` break on the new fields until updated.
 
-### 3.5 Cleared, reconciled and approved states
+### 3.5 Cleared and reconciled states
 
-- **What**: replace `cleared: bool` with `cleared | uncleared | reconciled`, add `approved: bool`, add `last_reconciled_at` on account, and a reconcile flow: enter the bank statement balance, tick off cleared items, lock them as reconciled.
-- **Why**: reconcile is how a user trusts the balance. `approved` is the inbox for imported transactions (3.6).
+- **What**: replace `cleared: bool` with `cleared | uncleared | reconciled`, add `last_reconciled_at` on account, and a reconcile flow: enter the bank statement balance, tick off cleared items, lock them as reconciled.
+- **Why**: reconcile is how a user trusts the balance. `approved` only exists in YNAB for the imported-transaction inbox, so skip it: with manual entry there is nothing to approve.
 - **How it fits**: all per-transaction fields, so LWW merges them. Keep the wire compatible: accept the old boolean as `cleared`/`uncleared` on read. Reconcile is a command in `ledger::plan` that emits patches: set `reconciled` on the chosen transactions and, if needed, a balance-adjustment transaction for the difference (YNAB does the same, with a payee "Reconciliation Balance Adjustment"). Transfer mirroring (D8) needs a rule: mirror `cleared` and `uncleared` as today, but never mirror `reconciled`, because each bank reconciles on its own day. That reverses an accepted trade-off in D8 and should be confirmed.
 - **Size**: M. Model change S, reconcile UI and command M.
 - **Risks**: a reconciled transaction edited later on another device. Decide the rule: edits to amount, date or account on a reconciled transaction ask for confirmation (YNAB does this); the core cannot enforce it across offline devices, only warn. The enum change touches validation on all three clients and the stored JSON, so ship with a read-both-forms period.
 
-### 3.6 `import_id` dedup for bank import
+### 3.6 `import_id` dedup and bank import: out of scope
 
-- **What**: an optional `import_id` string on `Transaction`, in YNAB's format `YNAB:<milli>:<date>:<n>` or any source-specific stable id (bank reference), plus an importer that reads bank CSV/OFX and pushes only new items as `approved: false`.
-- **Why**: manual entry is the weakest part of any envelope budget. The server has no bank connection, so file import is the realistic path.
-- **How it fits**: dedup must be deterministic and offline-safe, so make the transaction id itself a UUIDv5 of `(account_id, import_id)`. Then two devices importing the same file write the same entity and the merge keeps one, with no coordination. This is the same trick as `budget_entry_id` and stronger than YNAB's check, which needs the server to look up existing rows. Keep `import_id` also as a stored field for display and for matching. Matching an import against a hand-entered transaction (YNAB: same account, same amount, date within 10 days) is a core function `find_match(entities, candidate)`; on a match, the importer patches the existing transaction (sets `import_id`, `cleared`, `approved`) instead of creating one. Occurrence counting (`:1`, `:2`) is needed for banks that give no reference id; it is only stable if the same file is never partly re-imported with different ordering, which is a known weakness of YNAB's format too.
-- **Size**: M for the field, id rule and match function; plus S per file format.
-- **Risks**: a deterministic id means the user cannot import "the same" transaction twice on purpose, for example two identical coffees on one day; the occurrence counter handles it. The 10 day window can match the wrong item. Always show the match and let the user undo. Pending bank items change amount when posted; YNAB excludes pending items for this reason, do the same.
+Decision: zero-sum takes no bank sync or file import. Every transaction is entered by hand. So no `import_id`, no importer, no matching against imported items, no unapproved inbox. The one-time YNAB migration (3.1) is the only import and uses the YNAB transaction ids directly.
 
 ### 3.7 Flags
 
@@ -217,7 +213,7 @@ Common frame. In our design every change is an op, a patch to one entity with a 
 - **Users and `performed_by_user_id` on money movements and groups.** One person. Device id on the op (already there) is the only attribution needed.
 - **Subscription and trial errors (403.1, 403.2, 403.5) and data limits (403.4).** No billing, no quotas.
 - **Cloud/hosted assumptions**: multi-tenant plan list, plan sharing, `last-used` plan alias, CORS for third-party web apps. Ours is one origin, served by the same server.
-- **Direct import and bank linking** (`direct_import_linked`, `direct_import_in_error`, `matched_transaction_id` as server state). It needs a bank aggregator, a credential store and a public endpoint, all against the private design. File import (3.6) covers the need.
+- **Direct import and bank linking** (`direct_import_linked`, `direct_import_in_error`, `matched_transaction_id` as server state). It needs a bank aggregator, a credential store and a public endpoint, all against the private design. Transactions are entered by hand, so no import path is needed.
 - **Per-resource REST CRUD with `last_knowledge_of_server`.** Our single op stream is simpler and handles offline writes, which YNAB's API cannot.
 - **Read-only restrictions** (no account update, no category delete, no editing of existing splits). These are limits of a public API surface, not design choices to match. Our clients own the data.
 - **Deleted rows hidden outside deltas.** Our clients need tombstones to converge; keep sending them.
@@ -228,10 +224,9 @@ Common frame. In our design every change is an op, a patch to one entity with a 
 Order by value for one person, then by how little rework later steps cause.
 
 1. **Phase 1, foundation for everything else (S to M).** Settings entity and amount formatting helper (3.10); `flag_color` (3.7); payee rename and autocomplete (3.2). All are additive fields. Ship core first with `deny_unknown_fields` updated, then clients. This also lets the import carry flags and payees.
-2. **Phase 2, states and import (M).** `cleared | uncleared | reconciled`, `approved`, reconcile command (3.5); then the YNAB API importer (3.1) which can fill the new fields correctly and is checked against YNAB's own month numbers. Do the cleared change first so the import does not have to be redone. Decide the D8 mirroring rule for `reconciled` before coding.
-3. **Phase 3, bank import (M).** `import_id` with deterministic transaction ids, matching function, one CSV format, unapproved inbox (3.6). Needs phase 2's `approved`.
-4. **Phase 4, scheduled transactions (M).** Entity, frequency math in core, "enter" with deterministic occurrence ids (3.3). Independent of the above, so it can move earlier if bills matter more than imports.
-5. **Phase 5, goals (L).** `MF` and `TBD` first, derived underfunded in `budget.rs`, then `TB` and `NEED` (3.4). Highest effort, so after the data is real.
-6. **Phase 6, reporting and money movement history (S to M).** Move-money record and history, spending and net worth reports, age of money (3.9). Credit card payment categories (3.11) belong here or earlier if the imported budget has cards, because they change `budget.rs` numbers.
+2. **Phase 2, states and import (M).** `cleared | uncleared | reconciled`, reconcile command (3.5); then the YNAB API importer (3.1) which can fill the new fields correctly and is checked against YNAB's own month numbers. Do the cleared change first so the import does not have to be redone. Decide the D8 mirroring rule for `reconciled` before coding.
+3. **Phase 3, scheduled transactions (M).** Entity, frequency math in core, "enter" with deterministic occurrence ids (3.3). Independent of the above, so it can move earlier. With all entry manual, it saves the most typing.
+4. **Phase 4, goals (L).** `MF` and `TBD` first, derived underfunded in `budget.rs`, then `TB` and `NEED` (3.4). Highest effort, so after the data is real.
+5. **Phase 5, reporting and money movement history (S to M).** Move-money record and history, spending and net worth reports, age of money (3.9). Credit card payment categories (3.11) belong here or earlier if the imported budget has cards, because they change `budget.rs` numbers.
 
 Cross-cutting: every phase adds fields, so keep the rule "core release first, then clients" and add a test per new field in `crates/core` that an old payload still validates. Update `docs/architecture.md` ("Not modelled yet") as each item lands. Decide open question 2 (importer) now: this note recommends API import by one-off script, not a long-lived feature.
