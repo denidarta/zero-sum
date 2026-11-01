@@ -4,7 +4,7 @@ import ZeroSumKit
 struct BudgetView: View {
     @EnvironmentObject var ledger: Ledger
     @State private var month = Money.thisMonth()
-    @State private var assigning: Entity?
+    @State private var assigning: AssignTarget?
     @State private var addingGroup = false
     @State private var addingCategoryTo: Entity?
     @State private var deletingGroup: Entity?
@@ -19,6 +19,7 @@ struct BudgetView: View {
         let rows = Dictionary(budget.categories.map { ($0.categoryId, $0) }, uniquingKeysWith: { a, _ in a })
         let categories = ledger.sorted(.category)
         let orphaned = Set(budget.orphanedCategoryIds)
+        let accounts = ledger.list(.account)
 
         NavigationStack {
             List {
@@ -61,6 +62,25 @@ struct BudgetView: View {
                     }
                 }
 
+                // Credit card payment categories: derived rows, but money can be assigned to them.
+                if !budget.cardPayments.isEmpty {
+                    Section("Credit Card Payments") {
+                        ForEach(budget.cardPayments, id: \.categoryId) { card in
+                            let name = accounts.first { $0.id == card.accountId }?.name ?? "Card"
+                            Button {
+                                assigning = AssignTarget(id: card.categoryId, title: name, current: card.assigned)
+                            } label: {
+                                CategoryRow(
+                                    name: name,
+                                    row: CategoryMonth(
+                                        categoryId: card.categoryId, assigned: card.assigned,
+                                        activity: card.activity, available: card.available))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
                 // D2: a category whose group is gone still shows here, so its money is never hidden.
                 if !budget.orphanedCategoryIds.isEmpty {
                     Section("Orphaned (group was deleted)") {
@@ -78,8 +98,8 @@ struct BudgetView: View {
                         .accessibilityLabel("Add category group")
                 }
             }
-            .sheet(item: $assigning) { cat in
-                AssignSheet(category: cat, month: month, current: rows[cat.id]?.assigned ?? 0)
+            .sheet(item: $assigning) { target in
+                AssignSheet(target: target, month: month)
             }
             .alert("New category group", isPresented: $addingGroup) {
                 TextField("Name", text: $newName)
@@ -164,7 +184,7 @@ struct BudgetView: View {
     }
 
     private func categoryRow(_ cat: Entity, row: CategoryMonth?, orphaned: Bool) -> some View {
-        Button { assigning = cat } label: {
+        Button { assigning = AssignTarget(id: cat.id, title: cat.name, current: row?.assigned ?? 0) } label: {
             CategoryRow(name: cat.name, row: row)
         }
         .buttonStyle(.plain)
@@ -200,12 +220,19 @@ private struct CategoryRow: View {
     }
 }
 
+/// What the assign sheet writes to: a category, or the payment category of a credit card.
+private struct AssignTarget: Identifiable {
+    let id: String
+    let title: String
+    let current: Int64
+}
+
 private struct AssignSheet: View {
     @EnvironmentObject var ledger: Ledger
     @Environment(\.dismiss) private var dismiss
-    let category: Entity
+    let target: AssignTarget
     let month: String
-    let current: Int64
+    private var current: Int64 { target.current }
     @State private var text = ""
 
     var body: some View {
@@ -216,7 +243,7 @@ private struct AssignSheet: View {
                         .keyboardType(.decimalPad)
                 }
             }
-            .navigationTitle(category.name)
+            .navigationTitle(target.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -233,8 +260,8 @@ private struct AssignSheet: View {
         guard let value = Money.parse(text) else { return }
         if value != current {
             ledger.run {
-                try ledger.edit(.budgetEntry, ledger.entryId(category: category.id, month: month), [
-                    "category_id": .string(category.id), "month": .string(month), "assigned": .int(value),
+                try ledger.edit(.budgetEntry, ledger.entryId(category: target.id, month: month), [
+                    "category_id": .string(target.id), "month": .string(month), "assigned": .int(value),
                 ])
             }
         }
