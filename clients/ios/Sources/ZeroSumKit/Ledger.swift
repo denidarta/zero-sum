@@ -235,7 +235,7 @@ public final class Ledger: ObservableObject {
 
     private func pull(_ transport: Transport) async throws {
         while true {
-            let page = try await transport.pull(since: cursor, limit: 500)
+            let page = try await transport.pull(since: cursor)
             // Everything below runs without a suspension point, so no edit can slip in between.
             var next = entities
             var saved: [Entity] = []

@@ -4,7 +4,7 @@ import Foundation
 
 struct Down: Transport {
     func push(deviceId: String, ops: [Op]) async throws -> PushOutcome { throw URLError(.notConnectedToInternet) }
-    func pull(since: Int64, limit: Int) async throws -> PullPage { throw URLError(.notConnectedToInternet) }
+    func pull(since: Int64) async throws -> PullPage { throw URLError(.notConnectedToInternet) }
 }
 
 func op(_ kind: Kind, _ id: String, _ fields: [String: JSONValue], ts: Int64) -> Op {

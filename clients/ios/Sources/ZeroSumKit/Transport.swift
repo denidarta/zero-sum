@@ -2,7 +2,7 @@ import Foundation
 
 public protocol Transport {
     func push(deviceId: String, ops: [Op]) async throws -> PushOutcome
-    func pull(since: Int64, limit: Int) async throws -> PullPage
+    func pull(since: Int64) async throws -> PullPage
 }
 
 public enum TransportError: Error {
@@ -32,12 +32,9 @@ public struct HTTPTransport: Transport {
         return try await send(req)
     }
 
-    public func pull(since: Int64, limit: Int) async throws -> PullPage {
+    public func pull(since: Int64) async throws -> PullPage {
         var c = URLComponents(url: base.appendingPathComponent("sync/pull"), resolvingAgainstBaseURL: false)!
-        c.queryItems = [
-            URLQueryItem(name: "since", value: String(since)),
-            URLQueryItem(name: "limit", value: String(limit)),
-        ]
+        c.queryItems = [URLQueryItem(name: "since", value: String(since))]
         return try await send(URLRequest(url: c.url!))
     }
 

@@ -34,6 +34,22 @@ public enum Core {
         try wrap { try budgetEntryId(categoryId: category, month: month) }
     }
 
+    /// One entity write planned by the core: a field patch, or a tombstone when `deleted`.
+    public struct Patch: Decodable, Sendable {
+        public let kind: Kind
+        public let id: String
+        public let fields: [String: JSONValue]
+        public let deleted: Bool
+    }
+
+    /// Ledger rules: turn an action (transfers, deleting categories, see `crates/core/src/ledger.rs`)
+    /// into entity patches. Throws a `CoreFailure` with a message fit for the user when it is not allowed.
+    public static func plan(_ entities: [Entity], command: [String: JSONValue]) throws -> [Patch] {
+        let input = try json(entities), cmd = try json(command)
+        let out = try wrap { try planLedger(entitiesJson: input, commandJson: cmd) }
+        return try JSONDecoder().decode([Patch].self, from: Data(out.utf8))
+    }
+
     private static func json<T: Encodable>(_ value: T) throws -> String {
         String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
     }

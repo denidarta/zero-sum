@@ -2,7 +2,8 @@ import XCTest
 
 @testable import ZeroSumKit
 
-/// Spec: docs/ledger-edits-spec.md. Budget numbers come from the real Rust core.
+/// The ledger glue: patches from the Rust core written to the ledger. The rules themselves are
+/// tested in crates/core/src/ledger.rs. Budget numbers come from the real Rust core.
 @MainActor
 final class LedgerRulesTests: XCTestCase {
     private let month = "2026-10"
@@ -58,32 +59,6 @@ final class LedgerRulesTests: XCTestCase {
         XCTAssertEqual(ledger.balances()[savings], 500_000)
     }
 
-    func testTransferToTrackingAccountCountsAsSpendingInItsCategory() throws {
-        XCTAssertTrue(ledger.transferNeedsCategory(from: checking, to: tracking))
-        XCTAssertFalse(ledger.transferNeedsCategory(from: tracking, to: checking))
-        XCTAssertFalse(ledger.transferNeedsCategory(from: checking, to: savings))
-        try ledger.addTransfer(date: "2026-10-02", from: checking, to: tracking, amount: 200_000, memo: nil, cleared: false, categoryId: rent)
-        XCTAssertEqual(row(rent)?.activity, -200_000)
-    }
-
-    func testEditingOneLegMirrorsTheOtherWithFlippedSign() throws {
-        try ledger.addTransfer(date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil)
-        let inn = try XCTUnwrap(legs().first { $0.string("account_id") == savings })
-        try ledger.editTransfer(inn, date: "2026-10-09", amount: 700_000, memo: "move", cleared: true, categoryId: nil)
-        let out = try XCTUnwrap(legs().first { $0.string("account_id") == checking })
-        XCTAssertEqual(out.int("amount"), -700_000)
-        XCTAssertEqual(out.string("date"), "2026-10-09")
-        XCTAssertEqual(out.string("memo"), "move")
-        XCTAssertTrue(out.bool("cleared"))
-        XCTAssertEqual(try XCTUnwrap(ledger.get(.transaction, inn.id)).int("amount"), 700_000)
-    }
-
-    func testDeletingOneLegDeletesBoth() throws {
-        try ledger.addTransfer(date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil)
-        try ledger.removeTransaction(try XCTUnwrap(legs().first))
-        XCTAssertTrue(legs().isEmpty)
-    }
-
     func testSurvivingLegIsUnmatched() throws {
         try ledger.addTransfer(date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil)
         let (a, b) = (legs()[0], legs()[1])
@@ -92,19 +67,30 @@ final class LedgerRulesTests: XCTestCase {
         XCTAssertTrue(ledger.isUnmatched(try XCTUnwrap(ledger.get(.transaction, a.id))))
     }
 
-    // MARK: Splits and edits
-
-    func testSplitLinesHitTheirCategories() throws {
-        let id = Ledger.newID()
-        try ledger.edit(.transaction, id, [
-            "account_id": .string(checking), "date": "2026-10-05", "amount": -300_000,
-            "splits": .array([
-                SplitLine(categoryId: rent, amount: -100_000).json, SplitLine(categoryId: food, amount: -200_000).json,
-            ]),
-        ])
-        XCTAssertEqual(row(rent)?.activity, -100_000)
-        XCTAssertEqual(row(food)?.activity, -200_000)
+    func testCoreRefusalsReachTheCaller() throws {
+        XCTAssertThrowsError(try ledger.addTransfer(date: "2026-10-02", from: checking, to: checking, amount: 5, memo: nil, cleared: false, categoryId: nil)) {
+            XCTAssertEqual($0.localizedDescription, "Pick two different accounts.")
+        }
+        XCTAssertThrowsError(try ledger.addTransfer(date: "2026-10-02", from: checking, to: tracking, amount: 5, memo: nil, cleared: false, categoryId: nil)) {
+            XCTAssertEqual($0.localizedDescription, "Pick the category this money comes from.")
+        }
+        XCTAssertTrue(legs().isEmpty)
+        try ledger.addTransfer(date: "2026-10-02", from: checking, to: tracking, amount: 200_000, memo: nil, cleared: false, categoryId: rent)
+        XCTAssertEqual(row(rent)?.activity, -200_000)
     }
+
+    func testEditingAndDeletingATransferTouchesBothLegs() throws {
+        try ledger.addTransfer(date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil)
+        let inn = try XCTUnwrap(legs().first { $0.string("account_id") == savings })
+        try ledger.editTransfer(inn, date: "2026-10-09", amount: 700_000, memo: "move", cleared: true, categoryId: nil)
+        let out = try XCTUnwrap(legs().first { $0.string("account_id") == checking })
+        XCTAssertEqual(out.int("amount"), -700_000)
+        XCTAssertEqual(out.string("memo"), "move")
+        try ledger.removeTransaction(out)
+        XCTAssertTrue(legs().isEmpty)
+    }
+
+    // MARK: Splits and edits
 
     func testUpdateSendsOnlyChangedFieldsAndRejectsBadSplitSum() throws {
         let id = try spend(food, 100_000)
@@ -140,6 +126,16 @@ final class LedgerRulesTests: XCTestCase {
 
     // MARK: Groups and categories
 
+    func testDeletingACategoryMovesItsTransactionsAndFreesTheMoney() throws {
+        try assign(food, 400_000)
+        _ = try spend(food, 100_000)
+        XCTAssertEqual(ledger.budget(month: month).readyToAssign, 2_600_000)
+        try ledger.moveTransactions(from: food, to: rent)
+        XCTAssertNil(ledger.get(.category, food))
+        XCTAssertEqual(row(rent)?.activity, -100_000)
+        XCTAssertEqual(ledger.budget(month: month).readyToAssign, 3_000_000)
+    }
+
     func testCategoryWithDeletedGroupIsOrphaned() throws {
         XCTAssertTrue(ledger.budget(month: month).orphanedCategoryIds.isEmpty)
         try ledger.remove(.categoryGroup, group)
@@ -152,49 +148,4 @@ final class LedgerRulesTests: XCTestCase {
         XCTAssertEqual(ledger.categories(in: other).map(\.id), [rent])
     }
 
-    func testMovingTransactionsKeepsActivityAndFreesAssignedMoney() throws {
-        try assign(food, 400_000)
-        _ = try spend(food, 100_000)
-        XCTAssertEqual(ledger.budget(month: month).readyToAssign, 2_600_000)
-        try ledger.moveTransactions(from: food, to: rent)
-        XCTAssertNil(ledger.get(.category, food))
-        XCTAssertEqual(row(rent)?.activity, -100_000)
-        XCTAssertEqual(ledger.budget(month: month).readyToAssign, 3_000_000)
-    }
-
-    func testDeletingTransactionsFreesAssignedMoney() throws {
-        try assign(food, 400_000)
-        let id = try spend(food, 100_000)
-        try ledger.deleteTransactions(in: food)
-        XCTAssertNil(ledger.get(.category, food))
-        XCTAssertNil(ledger.get(.transaction, id))
-        XCTAssertEqual(ledger.budget(month: month).readyToAssign, 3_000_000)
-    }
-
-    func testDeletingCategoryTrimsItsSplitLinesOnly() throws {
-        let id = Ledger.newID()
-        try ledger.edit(.transaction, id, [
-            "account_id": .string(checking), "date": "2026-10-05", "amount": -300_000,
-            "splits": .array([
-                SplitLine(categoryId: rent, amount: -100_000).json, SplitLine(categoryId: food, amount: -200_000).json,
-            ]),
-        ])
-        XCTAssertEqual(ledger.transactions(in: food).map(\.id), [id])
-        try ledger.deleteTransactions(in: food)
-        let t = try XCTUnwrap(ledger.get(.transaction, id))
-        XCTAssertEqual(t.int("amount"), -100_000)
-        XCTAssertEqual(t.splits.map(\.categoryId), [rent])
-    }
-
-    func testMovingTransactionsRepointsSplitLines() throws {
-        let id = Ledger.newID()
-        try ledger.edit(.transaction, id, [
-            "account_id": .string(checking), "date": "2026-10-05", "amount": -300_000,
-            "splits": .array([
-                SplitLine(categoryId: rent, amount: -100_000).json, SplitLine(categoryId: food, amount: -200_000).json,
-            ]),
-        ])
-        try ledger.moveTransactions(from: food, to: rent)
-        XCTAssertEqual(try XCTUnwrap(ledger.get(.transaction, id)).splits.map(\.categoryId), [rent, rent])
-    }
 }

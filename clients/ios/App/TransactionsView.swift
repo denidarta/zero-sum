@@ -264,7 +264,7 @@ private struct TransactionForm: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(editing == nil ? "Add" : "Save") { save(from: from, to: to, needsCategory: needsCategory) }
+                    Button(editing == nil ? "Add" : "Save") { save(from: from, to: to) }
                         .disabled(Money.parse(amount) == nil)
                 }
             }
@@ -305,7 +305,7 @@ private struct TransactionForm: View {
         }
     }
 
-    private func save(from: String, to: String, needsCategory: Bool) {
+    private func save(from: String, to: String) {
         error = ""
         guard let value = Money.parse(amount) else { return }
         let magnitude = abs(value)
@@ -313,10 +313,8 @@ private struct TransactionForm: View {
         let dateText = Money.dateString(date)
         do {
             if mode == .transfer {
-                guard !from.isEmpty, !to.isEmpty, from != to else { return error = "Pick two different accounts." }
-                guard magnitude != 0 else { return error = "A transfer needs an amount." }
-                guard !needsCategory || !categoryId.isEmpty else { return error = "Pick the category this money comes from." }
-                let category = needsCategory ? categoryId : nil
+                // The core checks the accounts, the amount and the category, and words the error.
+                let category = categoryId.isEmpty ? nil : categoryId
                 if let t = editing {
                     try ledger.editTransfer(t, date: dateText, amount: magnitude, memo: memoText.isEmpty ? nil : memoText, cleared: cleared, categoryId: category)
                 } else {

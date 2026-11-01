@@ -3,7 +3,8 @@ import XCTest
 @testable import ZeroSumKit
 
 /// End to end against a real server, like clients/web/e2e/smoke.mjs. Skipped unless
-/// `ZERO_SUM_TEST_SERVER` is set, e.g. `ZERO_SUM_TEST_SERVER=http://127.0.0.1:8787 swift test`.
+/// `ZERO_SUM_TEST_SERVER` is set. Run `scripts/with-server.sh swift test`: it starts a throwaway server.
+/// These tests write data, so never point the variable at a real server.
 @MainActor
 final class ServerTests: XCTestCase {
     private func serverURL() throws -> String {
