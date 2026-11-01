@@ -1,6 +1,7 @@
-// Ledger rules shared by the UI: transfer pairs, splits, deleting categories.
-// Port of `clients/web/src/ledger.ts`. Spec: docs/ledger-edits-spec.md. Budget
-// math itself stays in the Rust core.
+// Ledger helpers for the UI. The rules (transfer pairs, splits, deleting
+// categories) live in the Rust core: `_run` asks it for patches and writes them.
+// Spec: docs/ledger-edits-spec.md.
+import 'core.dart';
 import 'db.dart';
 
 /// Split lines of a transaction. Empty for an unsplit one.
@@ -20,47 +21,55 @@ bool isTransfer(Entity t) => t.data['transfer_account_id'] != null;
 /// A transfer leg whose partner is gone, for example after a concurrent delete.
 bool isUnmatched(Db db, Entity t) => isTransfer(t) && partnerOf(db, t) == null;
 
-bool _onBudget(Db db, String id) =>
-    db.get('account', id)?.data['on_budget'] != false;
+/// Same test as the core: the account exists and `on_budget` is not explicitly false.
+/// Only decides whether the form shows a category picker; the core enforces D5.
+bool _onBudget(Db db, String id) {
+  final a = db.get('account', id);
+  return a != null && a.data['on_budget'] != false;
+}
 
 /// D5: money leaving the budget for a tracking account must come from a category.
 bool transferNeedsCategory(Db db, String from, String to) =>
     _onBudget(db, from) && !_onBudget(db, to);
+
+/// Plan an action in the core, then write each patch. Throws a [CoreException]
+/// with the core's message when the action is not allowed.
+Future<void> _run(Db db, Map<String, dynamic> command) async {
+  final patches = Core.instance.plan([
+    for (final e in db.entities.values) e.json,
+  ], command);
+  for (final p in patches) {
+    final kind = p['kind'] as String, id = p['id'] as String;
+    if (p['deleted'] as bool) {
+      await db.remove(kind, id);
+    } else {
+      await db.edit(kind, id, p['fields'] as Json);
+    }
+  }
+}
 
 /// Add a transfer: an outflow leg in [from] and an inflow leg in [to]. [amount]
 /// is positive milliunits.
 Future<void> addTransfer(
   Db db, {
   required String date,
-  required String from,
-  required String to,
+  required String? from,
+  required String? to,
   required int amount,
   String? memo,
   bool cleared = false,
   String? categoryId,
-}) async {
-  final a = newId(), b = newId();
-  final common = {
-    'date': date,
-    'memo': memo,
-    'cleared': cleared,
-    'category_id': categoryId,
-  };
-  await db.edit('transaction', a, {
-    ...common,
-    'account_id': from,
-    'amount': -amount,
-    'transfer_account_id': to,
-    'transfer_transaction_id': b,
-  });
-  await db.edit('transaction', b, {
-    ...common,
-    'account_id': to,
-    'amount': amount,
-    'transfer_account_id': from,
-    'transfer_transaction_id': a,
-  });
-}
+}) => _run(db, {
+  'command': 'add_transfer',
+  'ids': [newId(), newId()],
+  'date': date,
+  'from': from ?? '',
+  'to': to ?? '',
+  'amount': amount,
+  'memo': memo,
+  'cleared': cleared,
+  'category_id': categoryId,
+});
 
 /// D8: every edit to one leg is written to both legs, amount sign flipped.
 Future<void> editTransfer(
@@ -71,27 +80,19 @@ Future<void> editTransfer(
   String? memo,
   required bool cleared,
   String? categoryId,
-}) async {
-  final sign = (t.data['amount'] as int) < 0 ? -1 : 1;
-  final common = {
-    'date': date,
-    'memo': memo,
-    'cleared': cleared,
-    'category_id': categoryId,
-  };
-  final p = partnerOf(db, t);
-  await db.edit('transaction', t.id, {...common, 'amount': sign * amount});
-  if (p != null) {
-    await db.edit('transaction', p.id, {...common, 'amount': -sign * amount});
-  }
-}
+}) => _run(db, {
+  'command': 'edit_transfer',
+  'id': t.id,
+  'date': date,
+  'amount': amount,
+  'memo': memo,
+  'cleared': cleared,
+  'category_id': categoryId,
+});
 
 /// Delete a transaction. A transfer takes its other leg with it.
-Future<void> removeTransaction(Db db, Entity t) async {
-  final p = partnerOf(db, t);
-  await db.remove('transaction', t.id);
-  if (p != null) await db.remove('transaction', p.id);
-}
+Future<void> removeTransaction(Db db, Entity t) =>
+    _run(db, {'command': 'remove_transaction', 'id': t.id});
 
 /// Live transactions that use a category, directly or in a split line.
 List<Entity> txsInCategory(Db db, String categoryId) => [
@@ -108,56 +109,22 @@ List<Entity> categoriesInGroup(Db db, String groupId) => [
 
 /// Remove a category. Its budget entries go with it, so the money returns to
 /// Ready to Assign.
-Future<void> deleteEmptyCategory(Db db, String categoryId) async {
-  for (final e in db.list('budget_entry')) {
-    if (e.data['category_id'] == categoryId) {
-      await db.remove('budget_entry', e.id);
-    }
-  }
-  await db.remove('category', categoryId);
-}
+Future<void> deleteEmptyCategory(Db db, String categoryId) =>
+    _run(db, {'command': 'delete_empty_category', 'category_id': categoryId});
 
 /// D3, move: re-point every transaction at [target], then delete the category.
 Future<void> moveCategoryTransactions(
   Db db,
   String categoryId,
   String target,
-) async {
-  for (final t in txsInCategory(db, categoryId)) {
-    final lines = splitsOf(t);
-    if (lines.isEmpty) {
-      await db.edit('transaction', t.id, {'category_id': target});
-    } else {
-      await db.edit('transaction', t.id, {
-        'splits': [
-          for (final l in lines)
-            l['category_id'] == categoryId ? {...l, 'category_id': target} : l,
-        ],
-      });
-    }
-  }
-  await deleteEmptyCategory(db, categoryId);
-}
+) => _run(db, {
+  'command': 'move_category_transactions',
+  'category_id': categoryId,
+  'target': target,
+});
 
 /// D3, delete: remove the category's transactions, then the category.
-Future<void> deleteCategoryTransactions(Db db, String categoryId) async {
-  for (final t in txsInCategory(db, categoryId)) {
-    final lines = splitsOf(t);
-    if (lines.isEmpty) {
-      await removeTransaction(db, t);
-      continue;
-    }
-    // Only the lines in this category go. The rest of the split stays.
-    final keep = [
-      for (final l in lines)
-        if (l['category_id'] != categoryId) l,
-    ];
-    if (keep.isEmpty) {
-      await db.remove('transaction', t.id);
-      continue;
-    }
-    final amount = keep.fold<int>(0, (s, l) => s + (l['amount'] as int));
-    await db.edit('transaction', t.id, {'splits': keep, 'amount': amount});
-  }
-  await deleteEmptyCategory(db, categoryId);
-}
+Future<void> deleteCategoryTransactions(Db db, String categoryId) => _run(db, {
+  'command': 'delete_category_transactions',
+  'category_id': categoryId,
+});

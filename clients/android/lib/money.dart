@@ -15,9 +15,12 @@ final _amount = RegExp(r'^(-?)(\d[\d,]*)?(?:\.(\d{0,3}))?$');
 int? parseAmount(String s) {
   final m = _amount.firstMatch(s.trim());
   if (m == null || (m[2] == null && m[3] == null)) return null;
-  final whole = int.parse((m[2] ?? '0').replaceAll(',', ''));
-  final frac = int.parse((m[3] ?? '').padRight(3, '0'));
+  final whole = int.tryParse((m[2] ?? '0').replaceAll(',', ''));
+  final frac = int.tryParse((m[3] ?? '').padRight(3, '0'));
+  // Same cap as the web client (2^53 - 1), checked before multiplying so it cannot wrap.
+  if (whole == null || frac == null || whole > 9007199254740) return null;
   final v = whole * 1000 + frac;
+  if (v > 9007199254740991) return null;
   return m[1] == '-' ? -v : v;
 }
 

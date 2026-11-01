@@ -9,7 +9,18 @@ import 'money.dart';
 
 int _byName(Entity a, Entity b) {
   final s = a.sort.compareTo(b.sort);
-  return s != 0 ? s : a.str('name').compareTo(b.str('name'));
+  return s != 0
+      ? s
+      : a.str('name').toLowerCase().compareTo(b.str('name').toLowerCase());
+}
+
+/// Newest first: date, then when the date was last edited, then id.
+int _byNewest(Entity a, Entity b) {
+  final d = b.str('date').compareTo(a.str('date'));
+  if (d != 0) return d;
+  int ts(Entity e) => ((e.json['stamps'] as Map?)?['date']?['ts'] as int?) ?? 0;
+  final t = ts(b).compareTo(ts(a));
+  return t != 0 ? t : a.id.compareTo(b.id);
 }
 
 class ZeroSumApp extends StatelessWidget {
@@ -241,7 +252,10 @@ class _BudgetPageState extends State<BudgetPage> {
   /// D1: a group that still has categories cannot be deleted.
   Future<void> _deleteGroup(Entity g) async {
     if (categoriesInGroup(db, g.id).isNotEmpty) {
-      _toast(context, 'Move or delete the categories in ${g.str('name')} first.');
+      _toast(
+        context,
+        'Move or delete the categories in ${g.str('name')} first.',
+      );
       return;
     }
     if (await confirm(context, 'Delete group ${g.str('name')}?')) {
@@ -475,8 +489,14 @@ class _CategoryRow extends StatelessWidget {
             onSelected: (v) => v == 'move' ? _move(context) : _delete(context),
             itemBuilder: (_) => [
               if (groups != null)
-                const PopupMenuItem(value: 'move', child: Text('Move to group…')),
-              const PopupMenuItem(value: 'delete', child: Text('Delete category')),
+                const PopupMenuItem(
+                  value: 'move',
+                  child: Text('Move to group…'),
+                ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Text('Delete category'),
+              ),
             ],
           ),
         ],
@@ -551,7 +571,9 @@ class _DeleteCategoryDialogState extends State<_DeleteCategoryDialog> {
           DropdownButtonFormField<String>(
             key: const Key('move-target'),
             initialValue: _target,
-            decoration: const InputDecoration(labelText: 'Move transactions to'),
+            decoration: const InputDecoration(
+              labelText: 'Move transactions to',
+            ),
             items: [
               for (final c in others)
                 DropdownMenuItem(value: c.id, child: Text(c.str('name'))),
@@ -581,9 +603,8 @@ class _DeleteCategoryDialogState extends State<_DeleteCategoryDialog> {
         FilledButton(
           onPressed: _target == null
               ? null
-              : () => _run(
-                  () => moveCategoryTransactions(db, cat.id, _target!),
-                ),
+              : () =>
+                    _run(() => moveCategoryTransactions(db, cat.id, _target!)),
           child: const Text('Move and delete'),
         ),
       ],
@@ -734,7 +755,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
             .list('transaction')
             .where((t) => _account == null || t.data['account_id'] == _account)
             .toList()
-          ..sort((a, b) => b.str('date').compareTo(a.str('date')));
+          ..sort(_byNewest);
 
     return Scaffold(
       body: Column(
@@ -891,7 +912,8 @@ class _TxFormState extends State<TxForm> {
     _amount.text = fmt((t.data['amount'] as int).abs());
     _inflow = (t.data['amount'] as int) >= 0;
     _cleared = t.data['cleared'] == true;
-    _payee.text = db.get('payee', t.data['payee_id'] as String? ?? '')?.str('name') ?? '';
+    _payee.text =
+        db.get('payee', t.data['payee_id'] as String? ?? '')?.str('name') ?? '';
     final lines = splitsOf(t);
     if (lines.isNotEmpty) {
       _split = true;
@@ -937,13 +959,14 @@ class _TxFormState extends State<TxForm> {
 
   bool get _needsCategory {
     final f = _from, d = _dest;
-    return _transfer && f != null && d != null && transferNeedsCategory(db, f, d);
+    return _transfer &&
+        f != null &&
+        d != null &&
+        transferNeedsCategory(db, f, d);
   }
 
-  int get _lineSum => _lines.fold(
-    0,
-    (s, l) => s + (parseAmount(l.amount.text)?.abs() ?? 0),
-  );
+  int get _lineSum =>
+      _lines.fold(0, (s, l) => s + (parseAmount(l.amount.text)?.abs() ?? 0));
 
   void _fail(String m) => setState(() => _error = m);
 
@@ -965,20 +988,9 @@ class _TxFormState extends State<TxForm> {
 
   /// Both save methods return false when validation failed and the form stays open.
   Future<bool> _saveTransfer(int mag, String? memo) async {
-    final from = _from, to = _dest;
-    if (from == null || to == null || from == to) {
-      _fail('Pick two different accounts.');
-      return false;
-    }
-    if (mag == 0) {
-      _fail('A transfer needs an amount.');
-      return false;
-    }
-    if (_needsCategory && _category == null) {
-      _fail('Pick the category this money comes from.');
-      return false;
-    }
-    final category = _needsCategory ? _category : null;
+    // The core checks the accounts, the amount and the category, and words the
+    // error. `_save` shows it.
+    final category = _category;
     final t = _edit;
     if (t != null) {
       await editTransfer(
@@ -994,8 +1006,8 @@ class _TxFormState extends State<TxForm> {
       await addTransfer(
         db,
         date: isoDate(_date),
-        from: from,
-        to: to,
+        from: _from,
+        to: _dest,
         amount: mag,
         memo: memo,
         cleared: _cleared,

@@ -22,9 +22,10 @@ class Core {
     : _merge = lib.lookupFunction<_Fn2, _Fn2>('zs_merge'),
       _budget = lib.lookupFunction<_Fn2, _Fn2>('zs_budget'),
       _entryId = lib.lookupFunction<_Fn2, _Fn2>('zs_entry_id'),
+      _plan = lib.lookupFunction<_Fn2, _Fn2>('zs_plan'),
       _free = lib.lookupFunction<_Free, _FreeD>('zs_free');
 
-  final _Fn2 _merge, _budget, _entryId;
+  final _Fn2 _merge, _budget, _entryId, _plan;
   final _FreeD _free;
 
   /// Android packages `libzero_sum_ffi_c.so` in the APK. Host tests point
@@ -63,4 +64,12 @@ class Core {
 
   String budgetEntryId(String categoryId, String month) =>
       _call(_entryId, categoryId, month) as String;
+
+  /// Ledger rules: turn an action into entity patches `{kind, id, fields, deleted}`.
+  /// Throws a [CoreException] with a message fit for the user when it is not allowed.
+  List<Map<String, dynamic>> plan(
+    List<Map<String, dynamic>> entities,
+    Map<String, dynamic> command,
+  ) => (_call(_plan, jsonEncode(entities), jsonEncode(command)) as List)
+      .cast<Map<String, dynamic>>();
 }

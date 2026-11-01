@@ -237,7 +237,7 @@ class Db extends ChangeNotifier {
   Future<void> _pull() async {
     for (;;) {
       final res = await _http
-          .get(_url('/sync/pull?since=$cursor&limit=500'))
+          .get(_url('/sync/pull?since=$cursor'))
           .timeout(_timeout);
       if (res.statusCode != 200) throw Exception('pull ${res.statusCode}');
       final page = jsonDecode(res.body) as Json;

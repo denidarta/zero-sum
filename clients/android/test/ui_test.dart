@@ -133,11 +133,16 @@ void main() {
     final (db, ids) = await seed(tester);
     await tester.tap(find.byTooltip('Delete group').first);
     await tester.pumpAndSettle();
-    expect(find.text('Move or delete the categories in Needs first.'), findsOneWidget);
+    expect(
+      find.text('Move or delete the categories in Needs first.'),
+      findsOneWidget,
+    );
     expect(db.get('category_group', ids['group']!)!.deleted, isFalse);
   });
 
-  testWidgets('categories of a deleted group show under Orphaned', (tester) async {
+  testWidgets('categories of a deleted group show under Orphaned', (
+    tester,
+  ) async {
     final (db, ids) = await seed(tester);
     expect(find.byKey(const Key('orphaned')), findsNothing);
     await tester.runAsync(() => db.remove('category_group', ids['group']!));
@@ -156,10 +161,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Wants').last);
     await settle(tester);
-    expect(db.get('category', ids['food']!)!.data['group_id'], isNot(ids['group']));
+    expect(
+      db.get('category', ids['food']!)!.data['group_id'],
+      isNot(ids['group']),
+    );
   });
 
-  testWidgets('deleting a category with transactions can move them', (tester) async {
+  testWidgets('deleting a category with transactions can move them', (
+    tester,
+  ) async {
     final (db, ids) = await seed(tester);
     await tester.tap(find.byKey(const Key('menu-Food')));
     await tester.pumpAndSettle();
@@ -193,7 +203,9 @@ void main() {
     await tester.enterText(find.byKey(const Key('amount')), '100');
     await tester.tap(find.text('Add'));
     await settle(tester);
-    final legs = db.list('transaction').where((t) => t.data['transfer_account_id'] != null);
+    final legs = db
+        .list('transaction')
+        .where((t) => t.data['transfer_account_id'] != null);
     expect(legs, hasLength(2));
     expect(legs.map((t) => t.data['amount']).toSet(), {100000, -100000});
     expect(find.text('Transfer to Savings'), findsOneWidget);
@@ -225,7 +237,10 @@ void main() {
     final split = db.list('transaction').where((t) => t.data['splits'] != null);
     expect(split, hasLength(1));
     expect(split.first.data['amount'], -90000);
-    expect((split.first.data['splits'] as List).first['category_id'], ids['rent']);
+    expect(
+      (split.first.data['splits'] as List).first['category_id'],
+      ids['rent'],
+    );
   });
 
   testWidgets('tapping a transaction edits it', (tester) async {

@@ -20,6 +20,8 @@ void main() {
     expect(parseAmount('abc'), isNull);
     expect(parseAmount('1.2345'), isNull);
     expect(parseAmount('-'), isNull);
+    expect(parseAmount('99999999999999999999'), isNull);
+    expect(parseAmount('9007199254740.992'), isNull);
   });
 
   test('shiftMonth', () {
