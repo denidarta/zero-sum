@@ -95,9 +95,27 @@ public struct BudgetMonth: Codable, Hashable {
     public let month: String
     public let readyToAssign: Int64
     public let categories: [CategoryMonth]
+    /// Live categories whose group is missing or deleted. The core decides, clients only show them.
+    public let orphanedCategoryIds: [String]
 
     enum CodingKeys: String, CodingKey {
         case month, readyToAssign = "ready_to_assign", categories
+        case orphanedCategoryIds = "orphaned_category_ids"
+    }
+
+    public init(month: String, readyToAssign: Int64, categories: [CategoryMonth], orphanedCategoryIds: [String] = []) {
+        self.month = month
+        self.readyToAssign = readyToAssign
+        self.categories = categories
+        self.orphanedCategoryIds = orphanedCategoryIds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        month = try c.decode(String.self, forKey: .month)
+        readyToAssign = try c.decode(Int64.self, forKey: .readyToAssign)
+        categories = try c.decode([CategoryMonth].self, forKey: .categories)
+        orphanedCategoryIds = try c.decodeIfPresent([String].self, forKey: .orphanedCategoryIds) ?? []
     }
 
     public static func empty(_ month: String) -> BudgetMonth {

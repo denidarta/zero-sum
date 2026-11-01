@@ -98,6 +98,11 @@ public final class Ledger: ObservableObject {
         }
     }
 
+    /// One live entity, or nil when missing or deleted.
+    public func get(_ kind: Kind, _ id: String) -> Entity? {
+        entities[Self.key(kind, id)].flatMap { $0.deleted ? nil : $0 }
+    }
+
     public func names(_ kind: Kind) -> [String: String] {
         Dictionary(list(kind).map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
     }

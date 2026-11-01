@@ -50,5 +50,6 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(row.assigned, 1_000_000)
         XCTAssertEqual(row.activity, -400_000)
         XCTAssertEqual(row.available, 600_000)
+        XCTAssertTrue(b.orphanedCategoryIds.isEmpty)
     }
 }

@@ -40,4 +40,9 @@ final class MoneyTests: XCTestCase {
         let date = Calendar(identifier: .gregorian).date(from: c)!
         XCTAssertEqual(Money.dateString(date), "2026-03-07")
     }
+
+    func testDateRoundTrip() throws {
+        XCTAssertEqual(Money.dateString(try XCTUnwrap(Money.date(from: "2026-03-07"))), "2026-03-07")
+        XCTAssertNil(Money.date(from: "nope"))
+    }
 }
