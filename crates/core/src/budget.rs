@@ -11,7 +11,14 @@
 //!   spending is never dropped. Split lines are attributed one by one.
 //! - A category whose group is missing or deleted is reported as orphaned so
 //!   clients can still show its money.
-//! - Credit-card payment categories are not modelled yet.
+//! - Each on-budget credit card has a payment category (`card_payments`, id from
+//!   `card_payment_id`). Card spending in a category moves that much into the card's
+//!   row, and a transfer into the card from an on-budget account draws it down. Money
+//!   can be assigned to the row with an ordinary budget entry.
+//! - Overspending covered by card spending ("credit overspending") resets the category
+//!   but leaves Ready to Assign alone. The card's row is short by that amount instead.
+//!   Only the rest is cash overspending. A negative card row resets and reduces the
+//!   next month's Ready to Assign. Spec: `docs/superpowers/specs/2026-11-01-credit-card-payment-categories-design.md`.
 
 use crate::model::{
     card_payment_id, parse_data, parse_date, parse_month, Account, AccountKind, BudgetEntry,

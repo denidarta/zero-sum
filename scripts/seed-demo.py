@@ -8,7 +8,7 @@ The data covers every rule in crates/core/src/budget.rs: income, carry-over,
 overspending (resets to 0, reduces next month's Ready to Assign), splits,
 refunds, uncategorized outflow, on-budget transfers (ignored), transfers to and
 from an off-budget account, off-budget transactions and a deleted transaction.
-Expected numbers below are worked out by hand, not read from the server.
+Expected numbers below, credit card payment rows included, are worked out by hand, not read from the server.
 Ids are deterministic, so a rerun pushes the same ops and reports duplicates.
 """
 import json
@@ -19,6 +19,8 @@ import uuid
 NS = uuid.UUID("5a0e1c2d-0000-4000-8000-000000000001")
 # Same namespace as crates/core/src/model.rs BUDGET_ENTRY_NAMESPACE.
 BUDGET_NS = uuid.UUID(int=0x7A65_726F_2D73_756D_8000_0000_0000_0001)
+# Same namespace as crates/core/src/model.rs CARD_PAYMENT_NAMESPACE.
+CARD_NS = uuid.UUID(int=0x7A65_726F_2D73_756D_8000_0000_0000_0002)
 DEVICE = "seed-demo"
 TS = 1_761_900_000_000
 
@@ -109,6 +111,13 @@ def assign(month, **amounts):
             category_id=cid, month=month, assigned=mu(amount))
 
 
+def assign_payment(month, account_id, amount):
+    """Assign money to a credit card's payment category."""
+    cid = str(uuid.uuid5(CARD_NS, account_id))
+    put("budget_entry", str(uuid.uuid5(BUDGET_NS, f"{cid}:{month}")),
+        category_id=cid, month=month, assigned=mu(amount))
+
+
 # ---- 2026-08 -------------------------------------------------------------
 tx("aug-open-c", checking, "2026-08-01", 1000, "Opening Balance")
 tx("aug-salary", checking, "2026-08-01", 4000, "Employer", memo="Salary")
@@ -177,6 +186,18 @@ tx("oct-t2", checking, "2026-10-18", "-52.5", "Transit Pass", "Transport")
 tx("oct-hotel", checking, "2026-10-15", -120, "Hotel", "Vacation")
 transfer("oct-pay", "2026-10-30", checking, card, 800)
 
+# ---- 2026-11: credit overspending ------------------------------------------
+tx("nov-salary", checking, "2026-11-01", 4000, "Employer", memo="Salary")
+assign("2026-11", Rent=1500, Utilities=220, Internet=80, Groceries=600, Dining_Out=0,
+       Transport=150, Emergency_Fund=500, Vacation=400)
+assign_payment("2026-11", card, 50)  # covers part of the Dining Out credit overspending
+tx("nov-rent", checking, "2026-11-01", -1500, "Landlord", "Rent")
+tx("nov-power", checking, "2026-11-05", -220, "City Power", "Utilities")
+tx("nov-net", checking, "2026-11-06", -80, "FiberNet", "Internet")
+tx("nov-t1", checking, "2026-11-08", -60, "Gas Station", "Transport")
+tx("nov-g1", card, "2026-11-03", -300, "Supermarket", "Groceries")
+tx("nov-d1", card, "2026-11-12", -200, "Bistro", "Dining Out")  # 84.5 left, so 115.5 is credit overspending
+
 # Expected, by hand. Per month: ready_to_assign, then {category: (assigned, activity, available)}.
 # Ready to Assign = income so far - assigned so far - overspending of earlier months.
 EXPECTED = {
@@ -193,6 +214,20 @@ EXPECTED = {
         "Groceries": (600, -587.3, 94.7), "Dining Out": (250, -165.5, 84.5),
         "Transport": (150, -100.5, 149.5),
         "Emergency Fund": (500, 0, 2000), "Vacation": (400, -120, 630)}),
+    "2026-11": (4_323.75, {  # income 15403.75 + 4000; assigned 11560 + 3450 + 50; minus 20 overspent in Sep
+        "Rent": (1500, -1500, 0), "Utilities": (220, -220, 14.25), "Internet": (80, -80, 0),
+        "Groceries": (600, -300, 394.7), "Dining Out": (0, -200, -115.5),
+        "Transport": (150, -60, 239.5),
+        "Emergency Fund": (500, 0, 2500), "Vacation": (400, 0, 1030)}),
+}
+
+# Credit Card payment category: (assigned, activity, available).
+# Aug: spend 595 - paid 300. Sep: 865.6 - 500. Oct: 610.5 - 800. Nov: 300 + (200 - 115.5 credit overspent), 50 assigned.
+EXPECTED_CARD = {
+    "2026-08": (0, 295, 295),
+    "2026-09": (0, 365.6, 660.6),
+    "2026-10": (0, -189.5, 471.1),
+    "2026-11": (50, 384.5, 905.6),
 }
 
 
@@ -228,13 +263,19 @@ def main():
             checks += [(f"{cname}.assigned", c["assigned"], mu(a)),
                        (f"{cname}.activity", c["activity"], mu(act)),
                        (f"{cname}.available", c["available"], mu(av))]
+        card_row = next(c for c in got["card_payments"] if c["account_id"] == card)
+        a, act, av = EXPECTED_CARD[month]
+        checks += [("card.assigned", card_row["assigned"], mu(a)),
+                   ("card.activity", card_row["activity"], mu(act)),
+                   ("card.available", card_row["available"], mu(av)),
+                   ("card.category_id", card_row["category_id"], str(uuid.uuid5(CARD_NS, card)))]
         for label, have, want in checks:
             if have != want:
                 failures += 1
                 print(f"FAIL {month} {label}: got {have}, want {want}")
     if failures:
         sys.exit(f"{failures} mismatches")
-    print("budget math matches the hand-computed numbers for 2026-08, 2026-09, 2026-10")
+    print("budget math matches the hand-computed numbers for 2026-08 to 2026-11")
 
 
 if __name__ == "__main__":

@@ -157,7 +157,7 @@ Common frame. In our design every change is an op, a patch to one entity with a 
 
 - **What**: replace `cleared: bool` with `cleared | uncleared | reconciled`, add `last_reconciled_at` on account, and a reconcile flow: enter the bank statement balance, tick off cleared items, lock them as reconciled.
 - **Why**: reconcile is how a user trusts the balance. `approved` only exists in YNAB for the imported-transaction inbox, so skip it: with manual entry there is nothing to approve.
-- **How it fits**: all per-transaction fields, so LWW merges them. Keep the wire compatible: accept the old boolean as `cleared`/`uncleared` on read. Reconcile is a command in `ledger::plan` that emits patches: set `reconciled` on the chosen transactions and, if needed, a balance-adjustment transaction for the difference (YNAB does the same, with a payee "Reconciliation Balance Adjustment"). Transfer mirroring (D8) needs a rule: mirror `cleared` and `uncleared` as today, but never mirror `reconciled`, because each bank reconciles on its own day. That reverses an accepted trade-off in D8 and should be confirmed.
+- **How it fits**: all per-transaction fields, so LWW merges them. Keep the wire compatible: accept the old boolean as `cleared`/`uncleared` on read. Reconcile is a command in `ledger::plan` that emits patches: set `reconciled` on the chosen transactions and, if needed, a balance-adjustment transaction for the difference (YNAB does the same, with a payee "Reconciliation Balance Adjustment"). Transfer mirroring (D8): `reconciled` mirrors across both legs like `cleared`. Deni confirmed this on 2026-11-01, so D8 stands and the trade-off that the two banks may clear on different days is accepted.
 - **Size**: M. Model change S, reconcile UI and command M.
 - **Risks**: a reconciled transaction edited later on another device. Decide the rule: edits to amount, date or account on a reconciled transaction ask for confirmation (YNAB does this); the core cannot enforce it across offline devices, only warn. The enum change touches validation on all three clients and the stored JSON, so ship with a read-both-forms period.
 
@@ -201,7 +201,7 @@ Decision: zero-sum takes no bank sync or file import. Every transaction is enter
 
 ### 3.11 Smaller items worth listing
 
-- **Credit card payment categories**: YNAB creates one per credit card and moves money into it when you spend on the card. Architecture says not modelled. It is the biggest hole in budget parity and affects the import (3.1). M to L, core math change in `budget.rs`.
+- **Credit card payment categories**: done. See `docs/superpowers/specs/2026-11-01-credit-card-payment-categories-design.md`. Derived `card_payments` rows, assignable, with credit overspending leaving the card short.
 - **Account types**: extend `AccountKind` with the YNAB loan types only if loans are wanted. S, but enum changes need the same read-compat care as 3.5.
 - **Month notes and income total**: `note` on the month needs a month entity or a `budget_entry`-like deterministic entity. S. Low value.
 - **Hidden `internal` Inflow category**: not needed; we derive Ready to Assign.
@@ -224,7 +224,7 @@ Decision: zero-sum takes no bank sync or file import. Every transaction is enter
 Order by value for one person, then by how little rework later steps cause.
 
 1. **Phase 1, foundation for everything else (S to M).** Settings entity and amount formatting helper (3.10); `flag_color` (3.7); payee rename and autocomplete (3.2). All are additive fields. Ship core first with `deny_unknown_fields` updated, then clients. This also lets the import carry flags and payees.
-2. **Phase 2, states and import (M).** `cleared | uncleared | reconciled`, reconcile command (3.5); then the YNAB API importer (3.1) which can fill the new fields correctly and is checked against YNAB's own month numbers. Do the cleared change first so the import does not have to be redone. Decide the D8 mirroring rule for `reconciled` before coding.
+2. **Phase 2, states and import (M).** `cleared | uncleared | reconciled`, reconcile command (3.5); then the YNAB API importer (3.1) which can fill the new fields correctly and is checked against YNAB's own month numbers. Do the cleared change first so the import does not have to be redone.
 3. **Phase 3, scheduled transactions (M).** Entity, frequency math in core, "enter" with deterministic occurrence ids (3.3). Independent of the above, so it can move earlier. With all entry manual, it saves the most typing.
 4. **Phase 4, goals (L).** `MF` and `TBD` first, derived underfunded in `budget.rs`, then `TB` and `NEED` (3.4). Highest effort, so after the data is real.
 5. **Phase 5, reporting and money movement history (S to M).** Move-money record and history, spending and net worth reports, age of money (3.9). Credit card payment categories (3.11) belong here or earlier if the imported budget has cards, because they change `budget.rs` numbers.

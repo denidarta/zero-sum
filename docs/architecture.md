@@ -95,7 +95,9 @@ Budget rules (in `crates/core/src/budget.rs`):
 - A transaction whose category is deleted counts as uncategorized. Split lines are attributed one by one.
 - A category whose group is missing or deleted is listed in `orphaned_category_ids`. Clients show these under an Orphaned group.
 
-Not modelled yet: credit card payment categories, goals and targets, scheduled transactions, reconciliation, multiple budgets, currencies.
+- Each on-budget credit card gets a payment category row in `card_payments`. Its id is `card_payment_id(account_id)`, not an entity. Card spending moves into the row, a payment from an on-budget account draws it down, and a budget entry with that id assigns money to it. Spending that overspends a category is credit overspending: the category resets, Ready to Assign is untouched, and the card row is short by that amount. Design: `docs/superpowers/specs/2026-11-01-credit-card-payment-categories-design.md`.
+
+Not modelled yet: goals and targets, scheduled transactions, reconciliation, multiple budgets, currencies.
 
 ## Clients
 
