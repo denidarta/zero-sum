@@ -8,7 +8,8 @@ Merge rules and budget math are not re-implemented in Dart. The app calls the sh
 
 - `lib/core.dart`: `dart:ffi` bridge (`merge`, `budget`, `budgetEntryId`).
 - `lib/db.dart`: SQLite store, outbox, push and pull, WebSocket, reconnect. Port of `clients/web/src/db.ts`.
-- `lib/app.dart`: Budget, Transactions and Accounts screens, server URL dialog.
+- `lib/ledger.dart`: transfer pairs, splits and category delete (port of `clients/web/src/ledger.ts`, see `docs/ledger-edits-spec.md`).
+- `lib/app.dart`: Budget (with Orphaned section), Transactions (add, edit, transfer, split) and Accounts screens, server URL dialog.
 - `lib/money.dart`: milliunit formatting and parsing.
 
 ## Test
