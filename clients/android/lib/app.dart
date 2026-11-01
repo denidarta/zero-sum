@@ -251,15 +251,14 @@ class _BudgetPageState extends State<BudgetPage> {
 
   /// D1: a group that still has categories cannot be deleted.
   Future<void> _deleteGroup(Entity g) async {
-    if (categoriesInGroup(db, g.id).isNotEmpty) {
-      _toast(
-        context,
-        'Move or delete the categories in ${g.str('name')} first.',
-      );
+    try {
+      checkDeleteGroup(db, g.id);
+    } on CoreException catch (e) {
+      _toast(context, e);
       return;
     }
     if (await confirm(context, 'Delete group ${g.str('name')}?')) {
-      await db.remove('category_group', g.id);
+      await deleteGroup(db, g.id);
     }
   }
 
@@ -428,7 +427,7 @@ class _CategoryRow extends StatelessWidget {
   final List<Entity>? groups;
 
   Future<void> _delete(BuildContext context) async {
-    if (txsInCategory(db, cat.id).isNotEmpty) {
+    if (categoryTxCount(db, cat.id) > 0) {
       await showDialog<void>(
         context: context,
         builder: (_) => _DeleteCategoryDialog(db: db, category: cat),
@@ -554,7 +553,7 @@ class _DeleteCategoryDialogState extends State<_DeleteCategoryDialog> {
   @override
   Widget build(BuildContext context) {
     final db = widget.db, cat = widget.category;
-    final n = txsInCategory(db, cat.id).length;
+    final n = categoryTxCount(db, cat.id);
     final others = db.list('category').where((c) => c.id != cat.id).toList()
       ..sort(_byName);
     return AlertDialog(

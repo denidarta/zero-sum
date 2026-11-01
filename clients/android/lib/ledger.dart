@@ -32,13 +32,14 @@ bool _onBudget(Db db, String id) {
 bool transferNeedsCategory(Db db, String from, String to) =>
     _onBudget(db, from) && !_onBudget(db, to);
 
+List<Json> _plan(Db db, Json command) => Core.instance.plan([
+  for (final e in db.entities.values) e.json,
+], command);
+
 /// Plan an action in the core, then write each patch. Throws a [CoreException]
 /// with the core's message when the action is not allowed.
 Future<void> _run(Db db, Map<String, dynamic> command) async {
-  final patches = Core.instance.plan([
-    for (final e in db.entities.values) e.json,
-  ], command);
-  for (final p in patches) {
+  for (final p in _plan(db, command)) {
     final kind = p['kind'] as String, id = p['id'] as String;
     if (p['deleted'] as bool) {
       await db.remove(kind, id);
@@ -94,18 +95,23 @@ Future<void> editTransfer(
 Future<void> removeTransaction(Db db, Entity t) =>
     _run(db, {'command': 'remove_transaction', 'id': t.id});
 
-/// Live transactions that use a category, directly or in a split line.
-List<Entity> txsInCategory(Db db, String categoryId) => [
-  for (final t in db.list('transaction'))
-    if (t.data['category_id'] == categoryId ||
-        splitsOf(t).any((l) => l['category_id'] == categoryId))
-      t,
-];
+/// How many transactions deleting this category would remove, as the core counts them.
+int categoryTxCount(Db db, String categoryId) =>
+    _plan(db, {'command': 'delete_category_transactions', 'category_id': categoryId})
+        .where((p) => p['kind'] == 'transaction')
+        .length;
 
-List<Entity> categoriesInGroup(Db db, String groupId) => [
-  for (final c in db.list('category'))
-    if (c.data['group_id'] == groupId) c,
-];
+Json _groupDelete(String groupId) => {
+  'command': 'delete_group',
+  'group_id': groupId,
+};
+
+/// D1: the core refuses while the group has categories. Both throw a
+/// [CoreException] with its message.
+void checkDeleteGroup(Db db, String groupId) =>
+    _plan(db, _groupDelete(groupId));
+Future<void> deleteGroup(Db db, String groupId) =>
+    _run(db, _groupDelete(groupId));
 
 /// Remove a category. Its budget entries go with it, so the money returns to
 /// Ready to Assign.

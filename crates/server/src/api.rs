@@ -148,10 +148,8 @@ async fn ws(upgrade: WebSocketUpgrade, State(s): State<AppState>) -> Response {
 
 async fn watch(mut socket: WebSocket, s: AppState) {
     let mut rx = s.changed.subscribe();
-    if let Ok(head) = blocking(&s.store, |st| st.head()).await {
-        if notify(&mut socket, head).await.is_err() {
-            return;
-        }
+    if notify_head(&mut socket, &s).await.is_err() {
+        return;
     }
     loop {
         tokio::select! {
@@ -159,8 +157,7 @@ async fn watch(mut socket: WebSocket, s: AppState) {
                 Ok(cursor) => if notify(&mut socket, cursor).await.is_err() { return },
                 // Missed some updates: tell the client the latest head.
                 Err(broadcast::error::RecvError::Lagged(_)) => {
-                    let Ok(head) = blocking(&s.store, |st| st.head()).await else { return };
-                    if notify(&mut socket, head).await.is_err() { return }
+                    if notify_head(&mut socket, &s).await.is_err() { return }
                 }
                 Err(broadcast::error::RecvError::Closed) => return,
             },
@@ -170,6 +167,12 @@ async fn watch(mut socket: WebSocket, s: AppState) {
             },
         }
     }
+}
+
+/// Tell the client the current head. Err means close the socket, so the client reconnects.
+async fn notify_head(socket: &mut WebSocket, s: &AppState) -> Result<(), ()> {
+    let head = blocking(&s.store, |st| st.head()).await.map_err(drop)?;
+    notify(socket, head).await.map_err(drop)
 }
 
 async fn notify(socket: &mut WebSocket, cursor: i64) -> Result<(), axum::Error> {

@@ -5,7 +5,10 @@
 //! edit call it already has, so the outbox and sync do not change. Every client runs
 //! the same plan, so the rules cannot drift between them.
 
-use crate::{model::Kind, sync::EntityState};
+use crate::{
+    model::{parse_data, Account, Kind},
+    sync::EntityState,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -50,6 +53,8 @@ pub enum Command {
     DeleteCategoryTransactions { category_id: Uuid },
     /// Remove a category and its budget entries, so the money returns to Ready to Assign.
     DeleteEmptyCategory { category_id: Uuid },
+    /// D1: remove a group. Fails while it still has live categories.
+    DeleteGroup { group_id: Uuid },
 }
 
 /// One entity write. `deleted` is a tombstone, otherwise `fields` is a field patch.
@@ -128,10 +133,11 @@ impl<'a> Live<'a> {
         self.get(Kind::Transaction, uuid_field(t, "transfer_transaction_id")?)
     }
 
-    /// An account counts as on budget when it exists and `on_budget` is not explicitly false.
+    /// An account counts as on budget when it exists and its typed `on_budget` is set,
+    /// the same reading `budget::compute` uses.
     fn on_budget(&self, id: Uuid) -> bool {
         self.get(Kind::Account, id)
-            .is_some_and(|a| a.data.get("on_budget") != Some(&Value::Bool(false)))
+            .is_some_and(|a| parse_data::<Account>(&a.data).is_ok_and(|a| a.on_budget))
     }
 
     /// D5: money leaving the budget for a tracking account must come from a category.
@@ -372,6 +378,23 @@ pub fn plan(entities: &[EntityState], command: &Command) -> Result<Vec<Patch>, S
             let mut out = vec![];
             live.drop_category(*category_id, &mut out);
             Ok(out)
+        }
+
+        Command::DeleteGroup { group_id } => {
+            let group = live
+                .get(Kind::CategoryGroup, *group_id)
+                .ok_or("group not found")?;
+            let has_categories = live
+                .of_kind(Kind::Category)
+                .any(|c| uuid_field(c, "group_id") == Some(*group_id));
+            if has_categories {
+                let name = group.data.get("name").and_then(Value::as_str);
+                return Err(format!(
+                    "Move or delete the categories in {} first.",
+                    name.unwrap_or("this group")
+                ));
+            }
+            Ok(vec![remove(Kind::CategoryGroup, *group_id)])
         }
     }
 }
@@ -792,6 +815,27 @@ mod tests {
         .unwrap();
         assert_eq!(p.len(), 2);
         assert_eq!(budget(&w).ready_to_assign, 2_900_000);
+    }
+
+    #[test]
+    fn group_delete_is_blocked_while_it_has_categories() {
+        let mut w = world();
+        w[3].data.insert("name".into(), json!("Needs"));
+        let cmd = |g: u8| json!({"command": "delete_group", "group_id": id(g)});
+        assert_eq!(
+            run(&mut w, cmd(GROUP)).unwrap_err(),
+            "Move or delete the categories in Needs first."
+        );
+        assert_eq!(run(&mut w, cmd(99)).unwrap_err(), "group not found");
+        for c in [RENT, FOOD] {
+            run(
+                &mut w,
+                json!({"command": "delete_empty_category", "category_id": id(c)}),
+            )
+            .unwrap();
+        }
+        let p = run(&mut w, cmd(GROUP)).unwrap();
+        assert_eq!((p[0].kind, p[0].deleted), (Kind::CategoryGroup, true));
     }
 
     #[test]

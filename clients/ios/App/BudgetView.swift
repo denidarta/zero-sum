@@ -8,7 +8,6 @@ struct BudgetView: View {
     @State private var addingGroup = false
     @State private var addingCategoryTo: Entity?
     @State private var deletingGroup: Entity?
-    @State private var blockedGroup: Entity?
     @State private var deletingEmpty: Entity?
     @State private var deletingWithTransactions: Entity?
     @State private var moving: Entity?
@@ -109,15 +108,6 @@ struct BudgetView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             }
-            .alert(
-                "Group has categories",
-                isPresented: Binding(get: { blockedGroup != nil }, set: { if !$0 { blockedGroup = nil } }),
-                presenting: blockedGroup
-            ) { _ in
-                Button("OK", role: .cancel) {}
-            } message: { group in
-                Text("Move or delete the categories in \(group.name) first.")
-            }
             .confirmationDialog(
                 "Delete category \(deletingEmpty?.name ?? "")?",
                 isPresented: Binding(get: { deletingEmpty != nil }, set: { if !$0 { deletingEmpty = nil } }),
@@ -147,7 +137,7 @@ struct BudgetView: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete group", role: .destructive) {
-                    if let g = deletingGroup { ledger.run { try ledger.remove(.categoryGroup, g.id) } }
+                    if let g = deletingGroup { ledger.run { try ledger.deleteGroup(g.id) } }
                 }
             }
         }
@@ -155,12 +145,15 @@ struct BudgetView: View {
 
     /// D1: a group that still has categories cannot be deleted, so no money is ever hidden.
     private func askDeleteGroup(_ group: Entity) {
-        if ledger.categories(in: group.id).isEmpty { deletingGroup = group } else { blockedGroup = group }
+        ledger.run {
+            try ledger.checkDeleteGroup(group.id)
+            deletingGroup = group
+        }
     }
 
     /// D3: a category with transactions is deleted only after they are deleted or moved.
     private func askDeleteCategory(_ category: Entity) {
-        if ledger.transactions(in: category.id).isEmpty { deletingEmpty = category } else { deletingWithTransactions = category }
+        if ledger.transactionCount(in: category.id) == 0 { deletingEmpty = category } else { deletingWithTransactions = category }
     }
 
     private func categoryRow(_ cat: Entity, row: CategoryMonth?, orphaned: Bool) -> some View {
@@ -251,7 +244,7 @@ private struct DeleteCategorySheet: View {
     @State private var confirmingDelete = false
 
     var body: some View {
-        let count = ledger.transactions(in: category.id).count
+        let count = ledger.transactionCount(in: category.id)
         let others = ledger.sorted(.category).filter { $0.id != category.id }
         NavigationStack {
             Form {
