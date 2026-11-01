@@ -34,16 +34,9 @@ impl Kind {
 
 impl FromStr for Kind {
     type Err = String;
+    /// Same names as the serde rename, so a new kind needs no edit here.
     fn from_str(s: &str) -> Result<Self, String> {
-        Ok(match s {
-            "account" => Kind::Account,
-            "category_group" => Kind::CategoryGroup,
-            "category" => Kind::Category,
-            "payee" => Kind::Payee,
-            "transaction" => Kind::Transaction,
-            "budget_entry" => Kind::BudgetEntry,
-            other => return Err(format!("unknown kind {other:?}")),
-        })
+        serde_json::from_value(Value::String(s.into())).map_err(|_| format!("unknown kind {s:?}"))
     }
 }
 
