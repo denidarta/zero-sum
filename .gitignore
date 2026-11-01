@@ -1,5 +1,22 @@
+# Rust
 target/
+
+# Server SQLite database and its WAL files
 *.db
 *.db-shm
 *.db-wal
+
+# Built by clients/android/tool/build_core.sh
 clients/android/android/app/src/main/jniLibs/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# OS and editor noise
+.DS_Store
+*.log
+*.swp
+.idea/
+*.iml
