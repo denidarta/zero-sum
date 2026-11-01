@@ -205,6 +205,8 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
     loop {
         let mut rows = Vec::with_capacity(cats.len());
         let mut overspent = 0i64;
+        // Credit overspending each card's payment category is short this month.
+        let mut credit_share: HashMap<Uuid, i64> = HashMap::new();
         income_cum += income.get(&m).copied().unwrap_or(0);
         for &c in &cats {
             let a = assigned.get(&(c, m)).copied().unwrap_or(0);
@@ -212,7 +214,21 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
             let available = carry.get(&c).copied().unwrap_or(0) + a + act;
             assigned_cum += a;
             if available < 0 {
-                overspent -= available;
+                // Overspending covered by card spending leaves Ready to Assign alone: the
+                // card's payment category is short instead. Only the rest is cash overspending.
+                let mut spend: Vec<(i64, Uuid)> = cards
+                    .iter()
+                    .map(|&(card, _)| (card_spend.get(&(c, card, m)).copied().unwrap_or(0), card))
+                    .collect();
+                let total: i64 = spend.iter().map(|(s, _)| s).sum();
+                let mut credit = (-available).min(total).max(0);
+                overspent += -available - credit;
+                spend.sort_by(|x, y| y.0.cmp(&x.0).then(x.1.cmp(&y.1)));
+                for (s, card) in spend.into_iter().filter(|(s, _)| *s > 0) {
+                    let take = s.min(credit);
+                    *credit_share.entry(card).or_default() += take;
+                    credit -= take;
+                }
                 carry.insert(c, 0);
             } else {
                 carry.insert(c, available);
@@ -231,7 +247,9 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
                 .iter()
                 .map(|&c| card_spend.get(&(c, card, m)).copied().unwrap_or(0))
                 .sum();
-            let act = moved_in - card_paid.get(&(card, m)).copied().unwrap_or(0);
+            let act = moved_in
+                - credit_share.get(&card).copied().unwrap_or(0)
+                - card_paid.get(&(card, m)).copied().unwrap_or(0);
             let available = card_carry.get(&card).copied().unwrap_or(0) + a + act;
             assigned_cum += a;
             if available < 0 {
@@ -583,6 +601,93 @@ mod tests {
             .unwrap()
             .card_payments
             .is_empty());
+    }
+
+    fn sep_card_snap(entry_amount: i64) -> Snapshot {
+        let mut s = snap_with_card();
+        s.transactions = vec![tx(1, "2026-09-01", 1_000_000, None)];
+        s.entries = vec![entry(11, "2026-09", entry_amount)];
+        s
+    }
+
+    #[test]
+    fn credit_overspending_leaves_rta_alone() {
+        let mut s = sep_card_snap(100_000);
+        s.transactions.push(tx(4, "2026-09-10", -150_000, Some(11)));
+        let sep = compute(&s, "2026-09").unwrap();
+        assert_eq!(row(&sep, 11).available, -50_000);
+        assert_eq!(card_row(&sep, 4).activity, 100_000);
+        assert_eq!(sep.ready_to_assign, 900_000);
+        let oct = compute(&s, "2026-10").unwrap();
+        assert_eq!(row(&oct, 11).available, 0);
+        assert_eq!(card_row(&oct, 4).available, 100_000);
+        assert_eq!(oct.ready_to_assign, 900_000);
+    }
+
+    #[test]
+    fn cash_overspending_still_hits_rta() {
+        let mut s = sep_card_snap(100_000);
+        s.transactions.push(tx(1, "2026-09-10", -150_000, Some(11)));
+        let oct = compute(&s, "2026-10").unwrap();
+        assert_eq!(oct.ready_to_assign, 850_000);
+        assert_eq!(card_row(&oct, 4).available, 0);
+    }
+
+    #[test]
+    fn mixed_overspending_credit_first() {
+        let mut s = sep_card_snap(100_000);
+        s.transactions.push(tx(1, "2026-09-10", -150_000, Some(11)));
+        s.transactions.push(tx(4, "2026-09-11", -100_000, Some(11)));
+        let sep = compute(&s, "2026-09").unwrap();
+        assert_eq!(row(&sep, 11).available, -150_000);
+        assert_eq!(card_row(&sep, 4).activity, 0);
+        let oct = compute(&s, "2026-10").unwrap();
+        assert_eq!(oct.ready_to_assign, 850_000);
+    }
+
+    #[test]
+    fn covering_credit_overspending_by_assigning_to_the_card() {
+        let mut s = sep_card_snap(100_000);
+        s.transactions.push(tx(4, "2026-09-10", -150_000, Some(11)));
+        s.entries.push(BudgetEntry {
+            category_id: card_payment_id(id(4)),
+            month: "2026-10".into(),
+            assigned: 50_000,
+        });
+        let oct = compute(&s, "2026-10").unwrap();
+        assert_eq!(card_row(&oct, 4).available, 150_000);
+        assert_eq!(oct.ready_to_assign, 850_000);
+    }
+
+    #[test]
+    fn credit_share_is_greedy_across_cards() {
+        let mut s = sep_card_snap(100_000);
+        s.accounts.push((id(5), card_account(false)));
+        s.transactions.push(tx(4, "2026-09-10", -150_000, Some(11)));
+        s.transactions.push(tx(5, "2026-09-11", -60_000, Some(11)));
+        let b = compute(&s, "2026-09").unwrap();
+        assert_eq!(card_row(&b, 4).activity, 40_000);
+        assert_eq!(card_row(&b, 5).activity, 60_000);
+    }
+
+    #[test]
+    fn credit_share_is_capped_per_card() {
+        let mut s = sep_card_snap(0);
+        s.accounts.push((id(5), card_account(false)));
+        s.transactions.push(tx(4, "2026-09-10", -50_000, Some(11)));
+        s.transactions.push(tx(5, "2026-09-11", -60_000, Some(11)));
+        let b = compute(&s, "2026-09").unwrap();
+        assert_eq!(card_row(&b, 4).activity, 0);
+        assert_eq!(card_row(&b, 5).activity, 0);
+    }
+
+    #[test]
+    fn refund_larger_than_spend_never_gives_negative_credit() {
+        let mut s = sep_card_snap(100_000);
+        s.transactions.push(tx(4, "2026-09-10", 30_000, Some(11)));
+        let b = compute(&s, "2026-09").unwrap();
+        assert_eq!(row(&b, 11).available, 130_000);
+        assert_eq!(card_row(&b, 4).activity, -30_000);
     }
 
     #[test]
