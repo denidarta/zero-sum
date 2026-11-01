@@ -7,3 +7,6 @@ App/Info.plist
 .build/
 .swiftpm/
 xcuserdata/
+DerivedData/
+*.xcuserstate
+*.xcresult/
