@@ -65,6 +65,19 @@ pub unsafe extern "C" fn zs_entry_id(
     })())
 }
 
+/// Turn a ledger action into entity patches. The error message is fit to show to the user.
+/// # Safety
+/// Both pointers must be valid NUL-terminated strings.
+#[no_mangle]
+pub unsafe extern "C" fn zs_plan(
+    entities_json: *const c_char,
+    command_json: *const c_char,
+) -> *mut c_char {
+    reply(parsed((|| {
+        json::plan(arg(entities_json)?, arg(command_json)?)
+    })()))
+}
+
 /// Release a string returned by any `zs_*` function.
 /// # Safety
 /// `p` must come from this library and not be freed twice.
@@ -100,5 +113,8 @@ mod tests {
         assert_eq!(call(zs_budget, "[]", "2026-10")["ok"]["ready_to_assign"], 0);
         assert_eq!(call(zs_merge, "null", "{}").get("ok"), None);
         assert!(call(zs_merge, "null", "{}")["err"].is_string());
+        let cmd = r#"{"command":"delete_empty_category","category_id":"00000000-0000-4000-8000-0000000000aa"}"#;
+        assert_eq!(call(zs_plan, "[]", cmd)["ok"][0]["deleted"], true);
+        assert!(call(zs_plan, "[]", "{}")["err"].is_string());
     }
 }

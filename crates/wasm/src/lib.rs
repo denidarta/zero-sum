@@ -29,3 +29,9 @@ pub fn budget(entities_json: &str, month: &str) -> Result<String, JsError> {
 pub fn entry_id(category_id: &str, month: &str) -> Result<String, JsError> {
     json::entry_id(category_id, month).map_err(err)
 }
+
+/// Turn a ledger action into entity patches. Throws a user-facing message when it is not allowed.
+#[wasm_bindgen]
+pub fn plan(entities_json: &str, command_json: &str) -> Result<String, JsError> {
+    json::plan(entities_json, command_json).map_err(err)
+}

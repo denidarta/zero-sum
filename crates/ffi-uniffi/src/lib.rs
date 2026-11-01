@@ -45,6 +45,12 @@ pub fn budget_entry_id(category_id: String, month: String) -> Result<String, Cor
     json::entry_id(&category_id, &month).map_err(err)
 }
 
+/// Turn a ledger action into entity patches. The error message is fit to show to the user.
+#[uniffi::export]
+pub fn plan_ledger(entities_json: String, command_json: String) -> Result<String, CoreError> {
+    json::plan(&entities_json, &command_json).map_err(err)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,5 +61,6 @@ mod tests {
         assert!(e.to_string().contains("bad month"));
         assert!(budget_entry_id("nope".into(), "2026-10".into()).is_err());
         assert!(merge_op("null".into(), "{}".into()).is_err());
+        assert!(plan_ledger("[]".into(), "{}".into()).is_err());
     }
 }
