@@ -30,9 +30,13 @@ public enum Money {
         if whole.isEmpty && frac.isEmpty { return nil }
         guard let w = Int64(whole.isEmpty ? "0" : whole) else { return nil }
         let (scaled, overflow) = w.multipliedReportingOverflow(by: 1000)
-        if overflow { return nil }
+        // Same cap as the web and Android clients (2^53 - 1), the largest integer JSON numbers keep exactly.
+        // Checked before adding the fraction, so the sum cannot overflow.
+        if overflow || scaled > 9_007_199_254_740_991 { return nil }
         let f = Int64(frac.padding(toLength: 3, withPad: "0", startingAt: 0)) ?? 0
-        return group(1).isEmpty ? scaled + f : -(scaled + f)
+        let v = scaled + f
+        if v > 9_007_199_254_740_991 { return nil }
+        return group(1).isEmpty ? v : -v
     }
 
     // Always Gregorian: the API wants YYYY-MM-DD whatever calendar the device uses.

@@ -93,16 +93,26 @@ extension Ledger {
         try execute(["command": "remove_transaction", "id": .string(t.id)])
     }
 
-    /// Live transactions that use a category, directly or in a split line.
-    public func transactions(in categoryId: String) -> [Entity] {
-        list(.transaction).filter {
-            $0.string("category_id") == categoryId || $0.splits.contains { $0.categoryId == categoryId }
-        }
+    /// How many transactions deleting this category would remove, as the core counts them.
+    public func transactionCount(in categoryId: String) -> Int {
+        let patches = try? Core.plan(Array(entities.values), command: Self.deleteTransactions(categoryId))
+        return patches?.filter { $0.kind == .transaction }.count ?? 0
     }
 
-    public func categories(in groupId: String) -> [Entity] {
-        list(.category).filter { $0.string("group_id") == groupId }
+    private static func deleteTransactions(_ id: String) -> [String: JSONValue] {
+        ["command": "delete_category_transactions", "category_id": .string(id)]
     }
+
+    private static func groupDelete(_ id: String) -> [String: JSONValue] {
+        ["command": "delete_group", "group_id": .string(id)]
+    }
+
+    /// D1: the core refuses while the group has categories. Both throw its message.
+    public func checkDeleteGroup(_ id: String) throws {
+        _ = try Core.plan(Array(entities.values), command: Self.groupDelete(id))
+    }
+
+    public func deleteGroup(_ id: String) throws { try execute(Self.groupDelete(id)) }
 
     /// Remove a category. Its budget entries go with it, so the money returns to Ready to Assign.
     public func deleteEmptyCategory(_ id: String) throws {
@@ -116,6 +126,6 @@ extension Ledger {
 
     /// D3, delete: remove the category's transactions, then the category.
     public func deleteTransactions(in id: String) throws {
-        try execute(["command": "delete_category_transactions", "category_id": .string(id)])
+        try execute(Self.deleteTransactions(id))
     }
 }

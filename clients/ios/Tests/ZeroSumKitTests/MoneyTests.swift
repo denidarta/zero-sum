@@ -23,6 +23,8 @@ final class MoneyTests: XCTestCase {
         XCTAssertNil(Money.parse("abc"))
         XCTAssertNil(Money.parse("1.2345"))
         XCTAssertNil(Money.parse("99999999999999999999"))
+        XCTAssertEqual(Money.parse("9007199254740.991"), 9_007_199_254_740_991)
+        XCTAssertNil(Money.parse("9007199254740.992"))
     }
 
     func testShiftMonth() {

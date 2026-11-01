@@ -5,7 +5,9 @@ import { uuid } from "./db";
 import {
   byName,
   byNewest,
-  categoriesInGroup,
+  categoryTxCount,
+  checkDeleteGroup,
+  deleteGroup,
   deleteCategoryTransactions,
   deleteEmptyCategory,
   isTracking,
@@ -14,7 +16,6 @@ import {
   moveCategoryTransactions,
   removeTransaction,
   splitsOf,
-  txsInCategory,
 } from "./ledger";
 import { fmt, parse, shiftMonth, thisMonth } from "./money";
 import type { BudgetMonth, Entity } from "./types";
@@ -148,16 +149,18 @@ function BudgetView(p: {
   const [newGroup, setNewGroup] = useState("");
   const [deleting, setDeleting] = useState<Entity | null>(null);
 
-  // D1: a group with categories cannot be deleted, so no money is ever hidden.
-  const deleteGroup = (g: Entity) => {
-    if (categoriesInGroup(db, g.id).length) {
-      return alert(`Move or delete the categories in ${g.data.name} first.`);
+  // D1: the core refuses to delete a group that still has categories.
+  const removeGroup = (g: Entity) => {
+    try {
+      checkDeleteGroup(db, g.id);
+    } catch (e) {
+      return alert((e as Error).message);
     }
-    if (confirm(`Delete group ${g.data.name}?`)) db.remove("category_group", g.id);
+    if (confirm(`Delete group ${g.data.name}?`)) deleteGroup(db, g.id);
   };
 
   const deleteCategory = (c: Entity) => {
-    if (txsInCategory(db, c.id).length) return setDeleting(c);
+    if (categoryTxCount(db, c.id)) return setDeleting(c);
     if (confirm(`Delete category ${c.data.name}? Money assigned to it returns to Ready to Assign.`)) {
       deleteEmptyCategory(db, c.id);
     }
@@ -233,7 +236,7 @@ function BudgetView(p: {
             <tr class="group">
               <th colSpan={3}>{g.data.name}</th>
               <td class="num">
-                <button class="link" title="Delete group" aria-label={`Delete group ${g.data.name}`} onClick={() => deleteGroup(g)}>
+                <button class="link" title="Delete group" aria-label={`Delete group ${g.data.name}`} onClick={() => removeGroup(g)}>
                   ×
                 </button>
               </td>
@@ -269,7 +272,7 @@ function BudgetView(p: {
 
 /** D3: a category with transactions is deleted only after they are deleted or moved. */
 function DeleteCategory({ db, category, onDone }: { db: Db; category: Entity; onDone: () => void }) {
-  const n = txsInCategory(db, category.id).length;
+  const n = categoryTxCount(db, category.id);
   const others = db.list("category").filter((c) => c.id !== category.id).sort(byName);
   const [target, setTarget] = useState("");
   return (

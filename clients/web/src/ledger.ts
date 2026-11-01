@@ -53,9 +53,12 @@ export interface TransferInput {
   categoryId: string | null;
 }
 
+const plan = (db: Db, command: Record<string, unknown>) =>
+  planLedger([...db.entities.values()], command);
+
 /** Plan an action in the core, then write each patch. Throws the core's message when not allowed. */
 function run(db: Db, command: Record<string, unknown>) {
-  for (const p of planLedger([...db.entities.values()], command)) {
+  for (const p of plan(db, command)) {
     if (p.deleted) db.remove(p.kind, p.id);
     else db.edit(p.kind, p.id, p.fields);
   }
@@ -94,16 +97,16 @@ export const editTransfer = (
 export const removeTransaction = (db: Db, t: Entity) =>
   run(db, { command: "remove_transaction", id: t.id });
 
-/** Live transactions that use a category, directly or in a split line. */
-export const txsInCategory = (db: Db, categoryId: string) =>
-  db
-    .list("transaction")
-    .filter(
-      (t) => t.data.category_id === categoryId || splitsOf(t).some((l) => l.category_id === categoryId),
-    );
+/** How many transactions deleting this category would remove, as the core counts them. */
+export const categoryTxCount = (db: Db, categoryId: string) =>
+  plan(db, { command: "delete_category_transactions", category_id: categoryId }).filter(
+    (p) => p.kind === "transaction",
+  ).length;
 
-export const categoriesInGroup = (db: Db, groupId: string) =>
-  db.list("category").filter((c) => c.data.group_id === groupId);
+/** D1: the core refuses while the group has categories. Both throw its message. */
+const groupDelete = (groupId: string) => ({ command: "delete_group", group_id: groupId });
+export const checkDeleteGroup = (db: Db, groupId: string) => void plan(db, groupDelete(groupId));
+export const deleteGroup = (db: Db, groupId: string) => run(db, groupDelete(groupId));
 
 /** D3, move: re-point every transaction at `target`, then delete the category. */
 export const moveCategoryTransactions = (db: Db, categoryId: string, target: string) =>

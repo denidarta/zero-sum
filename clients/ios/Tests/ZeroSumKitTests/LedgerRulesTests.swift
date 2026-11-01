@@ -145,7 +145,7 @@ final class LedgerRulesTests: XCTestCase {
         try ledger.edit(.categoryGroup, other, ["name": "Fun"])
         try ledger.edit(.category, rent, ["group_id": .string(other)])
         XCTAssertEqual(ledger.budget(month: month).orphanedCategoryIds, [food])
-        XCTAssertEqual(ledger.categories(in: other).map(\.id), [rent])
+        XCTAssertThrowsError(try ledger.checkDeleteGroup(other))  // D1: Rent is in it
     }
 
 }
