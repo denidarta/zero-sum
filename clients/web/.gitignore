@@ -1,8 +1,0 @@
-node_modules/
-dist/
-src/wasm-pkg/
-*.tsbuildinfo
-.vite/
-coverage/
-playwright-report/
-test-results/
