@@ -46,17 +46,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build the Rust core for Apple platforms
         run: scripts/build-ios-core.sh
-      - name: Start a server for the end-to-end tests
-        run: |
-          cargo build -p zero-sum-server
-          ZERO_SUM_ADDR=127.0.0.1:8787 ZERO_SUM_DB="$RUNNER_TEMP/e2e.db" target/debug/zero-sum-server &
-          for i in $(seq 1 50); do curl -sf http://127.0.0.1:8787/health && break; sleep 0.2; done
-          curl -sf http://127.0.0.1:8787/health  # fail here, with the right error, if it never came up
-      - name: Swift tests
+      - name: Swift tests, with a throwaway server for the end-to-end tests
         working-directory: clients/ios
-        env:
-          ZERO_SUM_TEST_SERVER: http://127.0.0.1:8787
-        run: swift test
+        run: ../../scripts/with-server.sh swift test
       - name: Build the app for the simulator
         working-directory: clients/ios
         run: |

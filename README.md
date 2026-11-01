@@ -57,7 +57,7 @@ open ZeroSum.xcodeproj           # pick your team under Signing, then run
 
 In the app, open Settings and enter the server address, for example the `tailscale serve` URL. Edits work offline and sync when the server is reachable.
 
-Tests: `swift test` in `clients/ios` (set `ZERO_SUM_TEST_SERVER=http://127.0.0.1:8787` with a server running to include the end-to-end tests). iOS 17 or later. The simulator slice is arm64 only (Apple Silicon Macs).
+Tests: `../../scripts/with-server.sh swift test` in `clients/ios`. The script starts a throwaway server (free port, temp database) for the end-to-end tests and stops it afterwards. Never point `ZERO_SUM_TEST_SERVER` at your real server: the tests write data to it. Plain `swift test` skips the end-to-end tests. iOS 17 or later. The simulator slice is arm64 only (Apple Silicon Macs).
 
 ## Try it
 
