@@ -13,6 +13,7 @@ export function parse(s: string): number | null {
   const whole = Number((m[2] ?? "0").replace(/,/g, ""));
   const frac = Number((m[3] ?? "").padEnd(3, "0"));
   const v = whole * 1000 + frac;
+  if (!Number.isSafeInteger(v)) return null;
   return m[1] ? -v : v;
 }
 

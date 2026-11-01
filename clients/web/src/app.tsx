@@ -3,9 +3,12 @@ import { budgetEntryId, computeBudget } from "./core";
 import type { Db } from "./db";
 import { uuid } from "./db";
 import {
+  byName,
+  byNewest,
   categoriesInGroup,
   deleteCategoryTransactions,
   deleteEmptyCategory,
+  isTracking,
   isTransfer,
   isUnmatched,
   moveCategoryTransactions,
@@ -21,9 +24,6 @@ function useDb(db: Db) {
   const [, setN] = useState(0);
   useEffect(() => db.subscribe(() => setN((n) => n + 1)), [db]);
 }
-
-const byName = (a: Entity, b: Entity) =>
-  (a.data.sort ?? 0) - (b.data.sort ?? 0) || String(a.data.name).localeCompare(String(b.data.name));
 
 type View = { kind: "budget" } | { kind: "transactions"; account?: string };
 
@@ -68,7 +68,7 @@ export function App({ db }: { db: Db }) {
               >
                 <span>
                   {a.data.name}
-                  {!a.data.on_budget && <small> (tracking)</small>}
+                  {isTracking(a) && <small> (tracking)</small>}
                 </span>
                 <span class="num">{fmt(balances.get(a.id) ?? 0)}</span>
               </button>
@@ -363,7 +363,7 @@ function Transactions({ db, account }: { db: Db; account?: string }) {
   const txs = db
     .list("transaction")
     .filter((t) => !account || t.data.account_id === account)
-    .sort((a, b) => b.data.date.localeCompare(a.data.date));
+    .sort(byNewest);
 
   if (!accounts.length) return <p class="empty">Add an account to start.</p>;
 

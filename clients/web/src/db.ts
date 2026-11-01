@@ -148,7 +148,7 @@ export class Db {
 
   private async pull() {
     for (;;) {
-      const res = await fetch(this.url(`/sync/pull?since=${this.cursor}&limit=500`));
+      const res = await fetch(this.url(`/sync/pull?since=${this.cursor}`));
       if (!res.ok) throw new Error(`pull ${res.status}`);
       const page: { changes: Change[]; cursor: number; has_more: boolean } = await res.json();
       for (const { seq: _seq, ...server } of page.changes) {

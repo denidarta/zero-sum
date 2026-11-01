@@ -1,5 +1,7 @@
-// Ledger rules shared by the UI: transfer pairs, splits, deleting categories.
-// Spec: docs/ledger-edits-spec.md. Budget math itself stays in the Rust core.
+// Ledger helpers for the UI. The rules (transfer pairs, splits, deleting categories) live in
+// the Rust core: `planLedger` turns an action into patches and `run` writes them.
+// Spec: docs/ledger-edits-spec.md.
+import { planLedger } from "./core";
 import type { Db } from "./db";
 import { uuid } from "./db";
 import type { Entity, Split } from "./types";
@@ -18,9 +20,25 @@ export const isTransfer = (t: Entity) => !!t.data.transfer_account_id;
 /** A transfer leg whose partner is gone, for example after a concurrent delete. */
 export const isUnmatched = (db: Db, t: Entity) => isTransfer(t) && !partnerOf(db, t);
 
-const onBudget = (db: Db, id: string) => !!db.get("account", id)?.data.on_budget;
+/** Same test as the core: the account exists and `on_budget` is not explicitly false. */
+export const isTracking = (a: Entity) => a.data.on_budget === false;
+const onBudget = (db: Db, id: string) => {
+  const a = db.get("account", id);
+  return !!a && !isTracking(a);
+};
 
-/** D5: money leaving the budget for a tracking account must come from a category. */
+/** Order by `sort`, then name (case-insensitive). Used for accounts, groups and categories. */
+export const byName = (a: Entity, b: Entity) =>
+  (a.data.sort ?? 0) - (b.data.sort ?? 0) ||
+  String(a.data.name).localeCompare(String(b.data.name), undefined, { sensitivity: "base" });
+
+/** Newest first: date, then when the date was last edited, then id. */
+export const byNewest = (a: Entity, b: Entity) =>
+  b.data.date.localeCompare(a.data.date) ||
+  (b.stamps.date?.ts ?? 0) - (a.stamps.date?.ts ?? 0) ||
+  (a.id < b.id ? -1 : 1);
+
+/** Whether the form shows a category picker. The core enforces D5 when the transfer is saved. */
 export const transferNeedsCategory = (db: Db, from: string, to: string) =>
   onBudget(db, from) && !onBudget(db, to);
 
@@ -35,45 +53,46 @@ export interface TransferInput {
   categoryId: string | null;
 }
 
-export function addTransfer(db: Db, i: TransferInput) {
-  const a = uuid();
-  const b = uuid();
-  const common = { date: i.date, memo: i.memo, cleared: i.cleared, category_id: i.categoryId };
-  db.edit("transaction", a, {
-    ...common,
-    account_id: i.from,
-    amount: -i.amount,
-    transfer_account_id: i.to,
-    transfer_transaction_id: b,
-  });
-  db.edit("transaction", b, {
-    ...common,
-    account_id: i.to,
-    amount: i.amount,
-    transfer_account_id: i.from,
-    transfer_transaction_id: a,
-  });
+/** Plan an action in the core, then write each patch. Throws the core's message when not allowed. */
+function run(db: Db, command: Record<string, unknown>) {
+  for (const p of planLedger([...db.entities.values()], command)) {
+    if (p.deleted) db.remove(p.kind, p.id);
+    else db.edit(p.kind, p.id, p.fields);
+  }
 }
 
+export const addTransfer = (db: Db, i: TransferInput) =>
+  run(db, {
+    command: "add_transfer",
+    ids: [uuid(), uuid()],
+    date: i.date,
+    from: i.from,
+    to: i.to,
+    amount: i.amount,
+    memo: i.memo,
+    cleared: i.cleared,
+    category_id: i.categoryId,
+  });
+
 /** D8: every edit to one leg is written to both legs, amount sign flipped. */
-export function editTransfer(
+export const editTransfer = (
   db: Db,
   t: Entity,
   i: { date: string; amount: number; memo: string | null; cleared: boolean; categoryId: string | null },
-) {
-  const sign = (t.data.amount as number) < 0 ? -1 : 1;
-  const common = { date: i.date, memo: i.memo, cleared: i.cleared, category_id: i.categoryId };
-  db.edit("transaction", t.id, { ...common, amount: sign * i.amount });
-  const p = partnerOf(db, t);
-  if (p) db.edit("transaction", p.id, { ...common, amount: -sign * i.amount });
-}
+) =>
+  run(db, {
+    command: "edit_transfer",
+    id: t.id,
+    date: i.date,
+    amount: i.amount,
+    memo: i.memo,
+    cleared: i.cleared,
+    category_id: i.categoryId,
+  });
 
 /** Delete a transaction. A transfer takes its other leg with it. */
-export function removeTransaction(db: Db, t: Entity) {
-  const p = partnerOf(db, t);
-  db.remove("transaction", t.id);
-  if (p) db.remove("transaction", p.id);
-}
+export const removeTransaction = (db: Db, t: Entity) =>
+  run(db, { command: "remove_transaction", id: t.id });
 
 /** Live transactions that use a category, directly or in a split line. */
 export const txsInCategory = (db: Db, categoryId: string) =>
@@ -86,45 +105,14 @@ export const txsInCategory = (db: Db, categoryId: string) =>
 export const categoriesInGroup = (db: Db, groupId: string) =>
   db.list("category").filter((c) => c.data.group_id === groupId);
 
-/** Remove a category. Its budget entries go with it, so the money returns to Ready to Assign. */
-function dropCategory(db: Db, categoryId: string) {
-  for (const e of db.list("budget_entry")) {
-    if (e.data.category_id === categoryId) db.remove("budget_entry", e.id);
-  }
-  db.remove("category", categoryId);
-}
-
 /** D3, move: re-point every transaction at `target`, then delete the category. */
-export function moveCategoryTransactions(db: Db, categoryId: string, target: string) {
-  for (const t of txsInCategory(db, categoryId)) {
-    if (splitsOf(t).length) {
-      const splits = splitsOf(t).map((l) => (l.category_id === categoryId ? { ...l, category_id: target } : l));
-      db.edit("transaction", t.id, { splits });
-    } else {
-      db.edit("transaction", t.id, { category_id: target });
-    }
-  }
-  dropCategory(db, categoryId);
-}
+export const moveCategoryTransactions = (db: Db, categoryId: string, target: string) =>
+  run(db, { command: "move_category_transactions", category_id: categoryId, target });
 
 /** D3, delete: remove the category's transactions, then the category. */
-export function deleteCategoryTransactions(db: Db, categoryId: string) {
-  for (const t of txsInCategory(db, categoryId)) {
-    const lines = splitsOf(t);
-    if (!lines.length) {
-      removeTransaction(db, t);
-      continue;
-    }
-    // Only the lines in this category go. The rest of the split stays.
-    const keep = lines.filter((l) => l.category_id !== categoryId);
-    if (!keep.length) {
-      db.remove("transaction", t.id);
-      continue;
-    }
-    const amount = keep.reduce((s, l) => s + l.amount, 0);
-    db.edit("transaction", t.id, { splits: keep, amount });
-  }
-  dropCategory(db, categoryId);
-}
+export const deleteCategoryTransactions = (db: Db, categoryId: string) =>
+  run(db, { command: "delete_category_transactions", category_id: categoryId });
 
-export const deleteEmptyCategory = dropCategory;
+/** Remove a category. Its budget entries go with it, so the money returns to Ready to Assign. */
+export const deleteEmptyCategory = (db: Db, categoryId: string) =>
+  run(db, { command: "delete_empty_category", category_id: categoryId });

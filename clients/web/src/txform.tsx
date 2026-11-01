@@ -1,12 +1,9 @@
 import { useState } from "preact/hooks";
 import type { Db } from "./db";
 import { uuid } from "./db";
-import { addTransfer, editTransfer, isTransfer, splitsOf, transferNeedsCategory } from "./ledger";
+import { addTransfer, byName, editTransfer, isTracking, isTransfer, splitsOf, transferNeedsCategory } from "./ledger";
 import { fmt, parse, today } from "./money";
 import type { Entity, Split } from "./types";
-
-const byName = (a: Entity, b: Entity) =>
-  (a.data.sort ?? 0) - (b.data.sort ?? 0) || String(a.data.name).localeCompare(String(b.data.name));
 
 interface Line {
   category: string;
@@ -21,7 +18,7 @@ export function TxForm(p: { db: Db; account?: string; editing?: Entity; onDone?:
   const payees = db.list("payee");
   const editingTransfer = !!editing && isTransfer(editing);
   // Default to an on-budget account: that is where most transactions go.
-  const firstAccount = (accounts.find((a) => a.data.on_budget) ?? accounts[0])?.id ?? "";
+  const firstAccount = (accounts.find((a) => !isTracking(a)) ?? accounts[0])?.id ?? "";
   const out = editing ? (editing.data.amount as number) < 0 : true;
 
   const [f, setF] = useState(() => ({
@@ -68,13 +65,15 @@ export function TxForm(p: { db: Db; account?: string; editing?: Entity; onDone?:
     const mag = Math.abs(total);
 
     if (f.mode === "transfer") {
-      if (!from || !to || from === to) return setError("Pick two different accounts.");
-      if (mag === 0) return setError("A transfer needs an amount.");
-      if (needsCategory && !f.category) return setError("Pick the category this money comes from.");
-      const categoryId = needsCategory ? f.category : null;
+      // The core checks the accounts, the amount and the category, and words the error.
+      const categoryId = f.category || null;
       const memo = f.memo.trim() || null;
-      if (editing) editTransfer(db, editing, { date: f.date, amount: mag, memo, cleared: f.cleared, categoryId });
-      else addTransfer(db, { date: f.date, from, to, amount: mag, memo, cleared: f.cleared, categoryId });
+      try {
+        if (editing) editTransfer(db, editing, { date: f.date, amount: mag, memo, cleared: f.cleared, categoryId });
+        else addTransfer(db, { date: f.date, from, to, amount: mag, memo, cleared: f.cleared, categoryId });
+      } catch (err) {
+        return setError((err as Error).message);
+      }
       return done();
     }
 
