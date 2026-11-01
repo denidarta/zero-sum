@@ -152,6 +152,14 @@ pub struct BudgetEntry {
 
 const BUDGET_ENTRY_NAMESPACE: Uuid = Uuid::from_u128(0x7a65_726f_2d73_756d_8000_0000_0000_0001);
 
+const CARD_PAYMENT_NAMESPACE: Uuid = Uuid::from_u128(0x7a65_726f_2d73_756d_8000_0000_0000_0002);
+
+/// Id of the payment category of a credit card account. It is not an entity: budget math
+/// derives its row, and a `budget_entry` for it assigns money to it.
+pub fn card_payment_id(account_id: Uuid) -> Uuid {
+    Uuid::new_v5(&CARD_PAYMENT_NAMESPACE, account_id.to_string().as_bytes())
+}
+
 /// Deterministic id for the budget entry of a category in a month.
 pub fn budget_entry_id(category_id: Uuid, month: &str) -> Uuid {
     Uuid::new_v5(

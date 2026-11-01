@@ -14,7 +14,8 @@
 //! - Credit-card payment categories are not modelled yet.
 
 use crate::model::{
-    parse_data, parse_date, parse_month, Account, BudgetEntry, Category, Kind, Transaction,
+    card_payment_id, parse_data, parse_date, parse_month, Account, AccountKind, BudgetEntry,
+    Category, Kind, Transaction,
 };
 use crate::sync::EntityState;
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,16 @@ pub struct CategoryMonth {
     pub available: i64,
 }
 
+/// The payment category of one credit card. `category_id` is [`card_payment_id`] of the account.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardPaymentMonth {
+    pub account_id: Uuid,
+    pub category_id: Uuid,
+    pub assigned: i64,
+    pub activity: i64,
+    pub available: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BudgetMonth {
     pub month: String,
@@ -67,6 +78,9 @@ pub struct BudgetMonth {
     /// Live categories whose group is missing or deleted, sorted by id.
     #[serde(default)]
     pub orphaned_category_ids: Vec<Uuid>,
+    /// One row per on-budget credit card, sorted by account id.
+    #[serde(default)]
+    pub card_payments: Vec<CardPaymentMonth>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -110,10 +124,24 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
         })
         .collect();
     let cat_set: HashSet<Uuid> = cats.iter().copied().collect();
+    let mut cards: Vec<(Uuid, bool)> = snap
+        .accounts
+        .iter()
+        .filter(|(_, a)| a.on_budget && a.kind == AccountKind::CreditCard)
+        .map(|(id, a)| (*id, a.closed))
+        .collect();
+    cards.sort();
+    let card_by_payment_id: HashMap<Uuid, Uuid> = cards
+        .iter()
+        .map(|(id, _)| (card_payment_id(*id), *id))
+        .collect();
 
     let mut assigned: HashMap<(Uuid, Ym), i64> = HashMap::new();
     let mut activity: HashMap<(Uuid, Ym), i64> = HashMap::new();
     let mut income: HashMap<Ym, i64> = HashMap::new();
+    let mut card_assigned: HashMap<(Uuid, Ym), i64> = HashMap::new();
+    let mut card_spend: HashMap<(Uuid, Uuid, Ym), i64> = HashMap::new();
+    let mut card_paid: HashMap<(Uuid, Ym), i64> = HashMap::new();
     let mut start = target;
 
     for e in &snap.entries {
@@ -121,11 +149,25 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
         if cat_set.contains(&e.category_id) {
             *assigned.entry((e.category_id, m)).or_default() += e.assigned;
             start = start.min(m);
+        } else if let Some(&card) = card_by_payment_id.get(&e.category_id) {
+            *card_assigned.entry((card, m)).or_default() += e.assigned;
+            start = start.min(m);
         }
     }
     for t in &snap.transactions {
         if !on_budget.contains(&t.account_id) {
             continue;
+        }
+        let is_card = card_by_payment_id.values().any(|c| *c == t.account_id);
+        // A payment: money into the card from another on-budget account.
+        if is_card
+            && t.amount > 0
+            && t.transfer_account_id
+                .is_some_and(|f| on_budget.contains(&f))
+        {
+            let m = Ym::of_date(&t.date).ok_or("transaction with bad date")?;
+            *card_paid.entry((t.account_id, m)).or_default() += t.amount;
+            start = start.min(m);
         }
         if t.transfer_account_id
             .is_some_and(|to| on_budget.contains(&to))
@@ -143,7 +185,12 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
         };
         for (cat, amount) in lines {
             match cat {
-                Some(c) if cat_set.contains(&c) => *activity.entry((c, m)).or_default() += amount,
+                Some(c) if cat_set.contains(&c) => {
+                    *activity.entry((c, m)).or_default() += amount;
+                    if is_card && t.transfer_account_id.is_none() {
+                        *card_spend.entry((c, t.account_id, m)).or_default() -= amount;
+                    }
+                }
                 // Uncategorized, or its category was deleted: counts against Ready to Assign.
                 _ => *income.entry(m).or_default() += amount,
             }
@@ -152,6 +199,7 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
     }
 
     let mut carry: HashMap<Uuid, i64> = HashMap::new();
+    let mut card_carry: HashMap<Uuid, i64> = HashMap::new();
     let (mut income_cum, mut assigned_cum, mut overspent_before) = (0i64, 0i64, 0i64);
     let mut m = start;
     loop {
@@ -176,12 +224,39 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
                 available,
             });
         }
+        let mut card_rows = Vec::new();
+        for &(card, closed) in &cards {
+            let a = card_assigned.get(&(card, m)).copied().unwrap_or(0);
+            let moved_in: i64 = cats
+                .iter()
+                .map(|&c| card_spend.get(&(c, card, m)).copied().unwrap_or(0))
+                .sum();
+            let act = moved_in - card_paid.get(&(card, m)).copied().unwrap_or(0);
+            let available = card_carry.get(&card).copied().unwrap_or(0) + a + act;
+            assigned_cum += a;
+            if available < 0 {
+                overspent -= available;
+                card_carry.insert(card, 0);
+            } else {
+                card_carry.insert(card, available);
+            }
+            if !(closed && a == 0 && act == 0 && available == 0) {
+                card_rows.push(CardPaymentMonth {
+                    account_id: card,
+                    category_id: card_payment_id(card),
+                    assigned: a,
+                    activity: act,
+                    available,
+                });
+            }
+        }
         if m == target {
             return Ok(BudgetMonth {
                 month: month.to_string(),
                 ready_to_assign: income_cum - assigned_cum - overspent_before,
                 categories: rows,
                 orphaned_category_ids: orphaned,
+                card_payments: card_rows,
             });
         }
         overspent_before += overspent;
@@ -192,7 +267,7 @@ pub fn compute(snap: &Snapshot, month: &str) -> Result<BudgetMonth, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{AccountKind, Split};
+    use crate::model::{card_payment_id, AccountKind, Split};
 
     fn id(n: u128) -> Uuid {
         Uuid::from_u128(n)
@@ -356,6 +431,157 @@ mod tests {
         assert!(compute(&snap(), "2026-10")
             .unwrap()
             .orphaned_category_ids
+            .is_empty());
+    }
+
+    fn card_account(closed: bool) -> Account {
+        Account {
+            name: "card".into(),
+            kind: AccountKind::CreditCard,
+            on_budget: true,
+            closed,
+            note: None,
+        }
+    }
+
+    fn snap_with_card() -> Snapshot {
+        let mut s = snap();
+        s.accounts.push((id(4), card_account(false)));
+        s
+    }
+
+    fn card_row(b: &BudgetMonth, account: u128) -> &CardPaymentMonth {
+        b.card_payments
+            .iter()
+            .find(|c| c.account_id == id(account))
+            .unwrap()
+    }
+
+    /// Both legs of a transfer from `from` to `to`.
+    fn transfer(from: u128, to: u128, date: &str, amount: i64) -> Vec<Transaction> {
+        let mut out = tx(from, date, -amount, None);
+        out.transfer_account_id = Some(id(to));
+        let mut inn = tx(to, date, amount, None);
+        inn.transfer_account_id = Some(id(from));
+        vec![out, inn]
+    }
+
+    /// Income 1000, 500 assigned to cat 11 in 2026-10.
+    fn funded_card_snap() -> Snapshot {
+        let mut s = snap_with_card();
+        s.transactions = vec![tx(1, "2026-10-01", 1_000_000, None)];
+        s.entries = vec![entry(11, "2026-10", 500_000)];
+        s
+    }
+
+    #[test]
+    fn card_spend_moves_to_payment() {
+        let mut s = funded_card_snap();
+        s.transactions.push(tx(4, "2026-10-05", -200_000, Some(11)));
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(row(&b, 11).activity, -200_000);
+        assert_eq!(row(&b, 11).available, 300_000);
+        let c = card_row(&b, 4);
+        assert_eq!(c.category_id, card_payment_id(id(4)));
+        assert_eq!((c.assigned, c.activity, c.available), (0, 200_000, 200_000));
+        assert_eq!(b.ready_to_assign, 500_000);
+    }
+
+    #[test]
+    fn payment_draws_the_row_down() {
+        let mut s = funded_card_snap();
+        s.transactions.push(tx(4, "2026-10-05", -200_000, Some(11)));
+        s.transactions.extend(transfer(1, 4, "2026-10-20", 150_000));
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(card_row(&b, 4).activity, 50_000);
+        assert_eq!(b.ready_to_assign, 500_000);
+    }
+
+    #[test]
+    fn card_refund_reduces_the_row() {
+        let mut s = funded_card_snap();
+        s.transactions.push(tx(4, "2026-10-05", -200_000, Some(11)));
+        s.transactions.push(tx(4, "2026-10-06", 50_000, Some(11)));
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(card_row(&b, 4).activity, 150_000);
+    }
+
+    #[test]
+    fn assigning_to_the_payment_category() {
+        let mut s = funded_card_snap();
+        s.transactions.push(tx(4, "2026-10-05", -200_000, Some(11)));
+        s.entries.push(BudgetEntry {
+            category_id: card_payment_id(id(4)),
+            month: "2026-10".into(),
+            assigned: 100_000,
+        });
+        let b = compute(&s, "2026-10").unwrap();
+        let c = card_row(&b, 4);
+        assert_eq!((c.assigned, c.available), (100_000, 300_000));
+        assert_eq!(b.ready_to_assign, 400_000);
+    }
+
+    #[test]
+    fn entry_for_a_non_card_payment_id_is_ignored() {
+        let mut s = funded_card_snap();
+        s.entries.push(BudgetEntry {
+            category_id: card_payment_id(id(9)),
+            month: "2026-10".into(),
+            assigned: 100_000,
+        });
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(b.ready_to_assign, 500_000);
+        assert_eq!(b.card_payments.len(), 1);
+    }
+
+    #[test]
+    fn payment_row_carries_to_next_month() {
+        let mut s = snap_with_card();
+        s.transactions = vec![
+            tx(1, "2026-09-01", 1_000_000, None),
+            tx(4, "2026-09-05", -200_000, Some(11)),
+        ];
+        s.entries = vec![entry(11, "2026-09", 500_000)];
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(card_row(&b, 4).available, 200_000);
+    }
+
+    #[test]
+    fn payment_above_available_resets_and_hits_rta() {
+        let mut s = snap_with_card();
+        s.transactions = vec![
+            tx(1, "2026-09-01", 1_000_000, None),
+            tx(4, "2026-09-05", -100_000, Some(11)),
+        ];
+        s.transactions.extend(transfer(1, 4, "2026-09-20", 150_000));
+        s.entries = vec![entry(11, "2026-09", 300_000)];
+        let sep = compute(&s, "2026-09").unwrap();
+        assert_eq!(card_row(&sep, 4).available, -50_000);
+        assert_eq!(sep.ready_to_assign, 700_000);
+        let oct = compute(&s, "2026-10").unwrap();
+        assert_eq!(card_row(&oct, 4).available, 0);
+        assert_eq!(oct.ready_to_assign, 650_000);
+    }
+
+    #[test]
+    fn closed_card_row_only_while_nonzero() {
+        let mut s = snap();
+        s.accounts.push((id(4), card_account(true)));
+        assert!(compute(&s, "2026-10").unwrap().card_payments.is_empty());
+        s.transactions = vec![
+            tx(1, "2026-09-01", 1_000_000, None),
+            tx(4, "2026-09-05", -100_000, Some(11)),
+        ];
+        s.entries = vec![entry(11, "2026-09", 500_000)];
+        let b = compute(&s, "2026-10").unwrap();
+        assert_eq!(card_row(&b, 4).available, 100_000);
+    }
+
+    #[test]
+    fn non_card_kinds_get_no_row() {
+        assert!(compute(&snap(), "2026-10")
+            .unwrap()
+            .card_payments
             .is_empty());
     }
 
