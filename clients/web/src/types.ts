@@ -39,10 +39,21 @@ export interface CategoryMonth {
   available: number;
 }
 
+/** Payment category of one credit card. `category_id` takes budget entries like a category. */
+export interface CardPaymentMonth {
+  account_id: string;
+  category_id: string;
+  assigned: number;
+  activity: number;
+  available: number;
+}
+
 export interface BudgetMonth {
   month: string;
   ready_to_assign: number;
   categories: CategoryMonth[];
+  /** Absent in data computed by an older core. */
+  card_payments?: CardPaymentMonth[];
   /** Live categories whose group is missing or deleted. */
   orphaned_category_ids: string[];
 }

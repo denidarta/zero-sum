@@ -89,6 +89,25 @@ public struct CategoryMonth: Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case categoryId = "category_id", assigned, activity, available
     }
+    public init(categoryId: String, assigned: Int64, activity: Int64, available: Int64) {
+        self.categoryId = categoryId
+        self.assigned = assigned
+        self.activity = activity
+        self.available = available
+    }
+}
+
+/// The payment category of one credit card. `categoryId` takes budget entries like a category.
+public struct CardPaymentMonth: Codable, Hashable {
+    public let accountId: String
+    public let categoryId: String
+    public let assigned: Int64
+    public let activity: Int64
+    public let available: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case accountId = "account_id", categoryId = "category_id", assigned, activity, available
+    }
 }
 
 public struct BudgetMonth: Codable, Hashable {
@@ -97,17 +116,21 @@ public struct BudgetMonth: Codable, Hashable {
     public let categories: [CategoryMonth]
     /// Live categories whose group is missing or deleted. The core decides, clients only show them.
     public let orphanedCategoryIds: [String]
+    /// One row per on-budget credit card. Empty when an older core does not send it.
+    public let cardPayments: [CardPaymentMonth]
 
     enum CodingKeys: String, CodingKey {
         case month, readyToAssign = "ready_to_assign", categories
         case orphanedCategoryIds = "orphaned_category_ids"
+        case cardPayments = "card_payments"
     }
 
-    public init(month: String, readyToAssign: Int64, categories: [CategoryMonth], orphanedCategoryIds: [String] = []) {
+    public init(month: String, readyToAssign: Int64, categories: [CategoryMonth], orphanedCategoryIds: [String] = [], cardPayments: [CardPaymentMonth] = []) {
         self.month = month
         self.readyToAssign = readyToAssign
         self.categories = categories
         self.orphanedCategoryIds = orphanedCategoryIds
+        self.cardPayments = cardPayments
     }
 
     public init(from decoder: Decoder) throws {
@@ -116,6 +139,7 @@ public struct BudgetMonth: Codable, Hashable {
         readyToAssign = try c.decode(Int64.self, forKey: .readyToAssign)
         categories = try c.decode([CategoryMonth].self, forKey: .categories)
         orphanedCategoryIds = try c.decodeIfPresent([String].self, forKey: .orphanedCategoryIds) ?? []
+        cardPayments = try c.decodeIfPresent([CardPaymentMonth].self, forKey: .cardPayments) ?? []
     }
 
     public static func empty(_ month: String) -> BudgetMonth {

@@ -140,6 +140,33 @@ void main() {
     expect(db.get('category_group', ids['group']!)!.deleted, isFalse);
   });
 
+  testWidgets('credit card payment rows show the money set aside', (
+    tester,
+  ) async {
+    final (db, ids) = await seed(tester);
+    final month = thisMonth();
+    expect(find.byKey(const Key('card-payments')), findsNothing);
+    await tester.runAsync(() async {
+      final card = newId();
+      await db.edit('account', card, {'name': 'Visa', 'kind': 'credit_card'});
+      await db.edit('budget_entry', Core.instance.budgetEntryId(ids['food']!, month), {
+        'category_id': ids['food'],
+        'month': month,
+        'assigned': 100000,
+      });
+      await db.edit('transaction', newId(), {
+        'account_id': card,
+        'date': '$month-03',
+        'amount': -20000,
+        'category_id': ids['food'],
+      });
+    });
+    await settle(tester);
+    expect(find.byKey(const Key('card-payments')), findsOneWidget);
+    expect(find.byKey(const Key('card-Visa')), findsOneWidget);
+    expect(find.text('Assigned 0.00  ·  Activity 20.00'), findsOneWidget);
+  });
+
   testWidgets('categories of a deleted group show under Orphaned', (
     tester,
   ) async {

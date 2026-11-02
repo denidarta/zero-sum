@@ -51,5 +51,32 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(row.activity, -400_000)
         XCTAssertEqual(row.available, 600_000)
         XCTAssertTrue(b.orphanedCategoryIds.isEmpty)
+        XCTAssertTrue(b.cardPayments.isEmpty)
+    }
+
+    func testBudgetReturnsCardPaymentRows() throws {
+        let checking = Ledger.newID(), card = Ledger.newID(), group = Ledger.newID(), cat = Ledger.newID()
+        let month = "2026-10"
+        var entities: [Entity] = []
+        func add(_ kind: Kind, _ id: String, _ fields: [String: JSONValue]) throws {
+            entities.append(try Core.merge(nil, op(kind, id, fields, ts: 1)).state)
+        }
+        try add(.account, checking, ["name": "Checking", "kind": "checking", "on_budget": true])
+        try add(.account, card, ["name": "Visa", "kind": "credit_card", "on_budget": true])
+        try add(.categoryGroup, group, ["name": "Bills"])
+        try add(.category, cat, ["group_id": .string(group), "name": "Rent"])
+        try add(.transaction, Ledger.newID(), ["account_id": .string(checking), "date": "2026-10-01", "amount": 1_000_000])
+        try add(.transaction, Ledger.newID(), [
+            "account_id": .string(card), "date": "2026-10-05", "amount": -200_000, "category_id": .string(cat),
+        ])
+        try add(.budgetEntry, try Core.entryId(category: cat, month: month), [
+            "category_id": .string(cat), "month": .string(month), "assigned": 500_000,
+        ])
+
+        let b = try Core.budget(entities, month: month)
+        let row = try XCTUnwrap(b.cardPayments.first { $0.accountId == card })
+        XCTAssertEqual(row.activity, 200_000)
+        XCTAssertEqual(row.available, 200_000)
+        XCTAssertEqual(b.readyToAssign, 500_000)
     }
 }

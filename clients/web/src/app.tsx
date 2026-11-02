@@ -245,6 +245,33 @@ function BudgetView(p: {
             <AddCategory db={db} groupId={g.id} />
           </tbody>
         ))}
+        {(budget.card_payments ?? []).length > 0 && (
+          <tbody data-testid="card-payments">
+            <tr class="group">
+              <th colSpan={4}>Credit Card Payments</th>
+            </tr>
+            {(budget.card_payments ?? []).map((r) => (
+              <tr data-cat={`card:${db.get("account", r.account_id)?.data.name ?? r.account_id}`}>
+                <td>{db.get("account", r.account_id)?.data.name ?? "Card"}</td>
+                <td class="num">
+                  <AssignInput
+                    key={`${r.category_id}:${month}:${r.assigned}`}
+                    value={r.assigned}
+                    onCommit={(v) =>
+                      db.edit("budget_entry", budgetEntryId(r.category_id, month), {
+                        category_id: r.category_id,
+                        month,
+                        assigned: v,
+                      })
+                    }
+                  />
+                </td>
+                <td class="num">{fmt(r.activity)}</td>
+                <td class={`num avail ${r.available < 0 ? "neg" : ""}`}>{fmt(r.available)}</td>
+              </tr>
+            ))}
+          </tbody>
+        )}
         {orphaned.size > 0 && (
           <tbody data-testid="orphaned">
             <tr class="group">
