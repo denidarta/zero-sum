@@ -59,6 +59,14 @@ In the app, open Settings and enter the server address, for example the `tailsca
 
 Tests: `../../scripts/with-server.sh swift test` in `clients/ios`. The script starts a throwaway server (free port, temp database) for the end-to-end tests and stops it afterwards. Never point `ZERO_SUM_TEST_SERVER` at your real server: the tests write data to it. Plain `swift test` skips the end-to-end tests. iOS 17 or later. The simulator slice is arm64 only (Apple Silicon Macs).
 
+## Import a YNAB export
+
+```sh
+python3 scripts/import-ynab.py http://127.0.0.1:8787 "<export> - Register.tsv" "<export> - Plan.tsv"
+```
+
+Needs an empty server. Account kinds and closed or off-budget accounts are set at the top of the script.
+
 ## Try it
 
 ```sh
