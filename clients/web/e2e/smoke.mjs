@@ -70,22 +70,22 @@ try {
   await A.getByPlaceholder("Amount").fill("3000");
   await A.getByLabel("Inflow").check();
   await A.getByRole("button", { name: "Add", exact: true }).click();
-  await A.getByRole("button", { name: "Budget" }).click();
+  await A.getByRole("button", { name: "Plan" }).click();
   await A.locator('[data-cat="Rent"] input.num').fill("1200");
   await A.locator('[data-cat="Rent"] input.num').press("Enter");
-  await until(async () => (await rta(A)) === "1,800.00", "A ready to assign 1,800.00");
+  await until(async () => (await rta(A)) === "Rp1.800", "A ready to assign 1,800.00");
 
   // Device B is new. It must converge to the same numbers.
   const b = await open();
   const B = b.page;
-  await until(async () => (await rta(B)) === "1,800.00", "B pulled A's budget");
+  await until(async () => (await rta(B)) === "Rp1.800", "B pulled A's budget");
 
   // B goes offline and re-assigns rent. Nothing may be lost or block the UI.
   await b.ctx.setOffline(true);
   await B.locator('[data-cat="Rent"] input.num').fill("1500");
   await B.locator('[data-cat="Rent"] input.num').press("Enter");
-  await until(async () => (await rta(B)) === "1,500.00", "B local edit while offline");
-  assert.equal(await rta(A), "1,800.00", "A must not see offline edit yet");
+  await until(async () => (await rta(B)) === "Rp1.500", "B local edit while offline");
+  assert.equal(await rta(A), "Rp1.800", "A must not see offline edit yet");
 
   // Meanwhile A records spending in the same category.
   await A.getByRole("button", { name: "All transactions" }).click();
@@ -93,15 +93,15 @@ try {
   await A.getByLabel("Inflow").uncheck();
   await A.locator("select").nth(1).selectOption({ label: "Rent" });
   await A.getByRole("button", { name: "Add", exact: true }).click();
-  await A.getByRole("button", { name: "Budget" }).click();
+  await A.getByRole("button", { name: "Plan" }).click();
 
   // B reconnects. Both devices converge on assigned 1500 and 100 spent.
   await b.ctx.setOffline(false);
   await B.evaluate(() => window.zs.sync());
-  await until(async () => (await B.locator('[data-cat="Rent"] td.avail').innerText()) === "1,400.00", "B available");
-  await until(async () => (await A.locator('[data-cat="Rent"] td.avail').innerText()) === "1,400.00", "A available");
-  assert.equal(await rta(A), "1,500.00");
-  assert.equal(await rta(B), "1,500.00");
+  await until(async () => (await B.locator('[data-cat="Rent"] td.avail').innerText()) === "Rp1.400", "B available");
+  await until(async () => (await A.locator('[data-cat="Rent"] td.avail').innerText()) === "Rp1.400", "A available");
+  assert.equal(await rta(A), "Rp1.500");
+  assert.equal(await rta(B), "Rp1.500");
 
   // Pending queue drained on both.
   assert.equal(await A.evaluate(() => window.zs.outbox.length), 0);
@@ -115,13 +115,13 @@ try {
     await A.getByPlaceholder("Add category").nth(n).fill(name);
     await A.getByPlaceholder("Add category").nth(n).press("Enter");
   };
-  await A.getByRole("button", { name: "Budget" }).click();
+  await A.getByRole("button", { name: "Plan" }).click();
 
   // D1: a group with categories cannot be deleted.
   await A.getByLabel("Delete group Bills").click();
   assert.match(dialogs.at(-1), /Move or delete the categories in Bills first/);
   assert.equal(await A.locator("tr.group", { hasText: "Bills" }).count(), 1);
-  assert.equal(await rta(A), "1,500.00");
+  assert.equal(await rta(A), "Rp1.500");
 
   // D2: B adds a category to a group that A deletes meanwhile. It must stay visible.
   await A.getByPlaceholder("New category group").fill("Temp");
@@ -132,14 +132,14 @@ try {
   await B.getByPlaceholder("Add category").nth(1).press("Enter");
   await B.locator('[data-cat="Gym"] input.num').fill("200");
   await B.locator('[data-cat="Gym"] input.num').press("Enter");
-  await until(async () => (await rta(B)) === "1,300.00", "B assigned to Gym offline");
+  await until(async () => (await rta(B)) === "Rp1.300", "B assigned to Gym offline");
   await A.getByLabel("Delete group Temp").click();
   assert.match(dialogs.at(-1), /Delete group Temp/);
   await b.ctx.setOffline(false);
   await B.evaluate(() => window.zs.sync());
   for (const [name, P] of [["A", A], ["B", B]]) {
     await until(async () => (await P.getByTestId("orphaned").locator('[data-cat="Gym"]').count()) === 1, `${name} shows Gym as orphaned`);
-    await until(async () => (await rta(P)) === "1,300.00", `${name} keeps Gym's 200 assigned`);
+    await until(async () => (await rta(P)) === "Rp1.300", `${name} keeps Gym's 200 assigned`);
   }
   // The user can move it to a real group.
   await A.getByLabel("Move Gym to a group").selectOption({ label: "Bills" });
@@ -147,7 +147,7 @@ try {
   // D3: deleting a category without transactions returns its money to Ready to Assign.
   await A.getByLabel("Delete category Gym").click();
   assert.match(dialogs.at(-1), /returns to Ready to Assign/);
-  await until(async () => (await rta(A)) === "1,500.00", "Gym's 200 back in Ready to Assign");
+  await until(async () => (await rta(A)) === "Rp1.500", "Gym's 200 back in Ready to Assign");
 
   // D3: deleting a category with transactions moves them.
   await addCategory(0, "Food");
@@ -157,14 +157,14 @@ try {
   await A.getByLabel("Inflow").uncheck();
   await A.locator("select").nth(1).selectOption({ label: "Food" });
   await A.getByRole("button", { name: "Add", exact: true }).click();
-  await A.getByRole("button", { name: "Budget" }).click();
-  assert.equal(await cell(A, "Food"), "-50.00");
+  await A.getByRole("button", { name: "Plan" }).click();
+  assert.equal(await cell(A, "Food"), "-Rp50");
   await A.getByLabel("Delete category Food").click();
   await A.locator(".modal select").selectOption({ label: "Rent" });
   await A.getByRole("button", { name: "Move and delete category" }).click();
-  await until(async () => (await cell(A, "Rent")) === "1,350.00", "Rent absorbed Food's 50");
+  await until(async () => (await cell(A, "Rent")) === "Rp1.350", "Rent absorbed Food's 50");
   assert.equal(await A.locator('[data-cat="Food"]').count(), 0);
-  assert.equal(await rta(A), "1,500.00");
+  assert.equal(await rta(A), "Rp1.500");
 
   // D4/D8: transfers are two linked transactions and edits mirror.
   await A.getByPlaceholder("New account").fill("Savings");
@@ -179,7 +179,7 @@ try {
   await A.locator("select").nth(1).selectOption({ label: "Savings" });
   await A.getByPlaceholder("Amount").fill("100");
   await A.getByRole("button", { name: "Add", exact: true }).click();
-  await until(async () => (await balance("Savings")) === "100.00", "Savings got the transfer");
+  await until(async () => (await balance("Savings")) === "Rp100", "Savings got the transfer");
   assert.equal(await A.getByText("Transfer to Savings").count(), 1);
   assert.equal(await A.getByText("Transfer from Checking").count(), 1);
   await A.locator("tr[data-tx]", { hasText: "Transfer from Checking" }).getByLabel("Edit transaction").click();
@@ -187,11 +187,11 @@ try {
   await edit.getByPlaceholder("Amount").fill("150");
   await edit.getByPlaceholder("Memo").fill("rainy day");
   await edit.getByRole("button", { name: "Save" }).click();
-  await until(async () => (await balance("Savings")) === "150.00", "edit mirrored to the Checking leg");
+  await until(async () => (await balance("Savings")) === "Rp150", "edit mirrored to the Checking leg");
   assert.equal(await A.locator("tr[data-tx]", { hasText: "Transfer to Savings" }).locator(".memo").innerText(), "rainy day");
   await A.locator("tr[data-tx]", { hasText: "Transfer to Savings" }).getByLabel("Delete transaction").click();
   assert.match(dialogs.at(-1), /both legs/);
-  await until(async () => (await balance("Savings")) === "0.00", "deleting one leg deletes both");
+  await until(async () => (await balance("Savings")) === "Rp0", "deleting one leg deletes both");
   assert.equal(await A.getByText(/Transfer (to|from)/).count(), 0);
 
   // D5: money leaving the budget for a tracking account needs a category.
@@ -202,9 +202,9 @@ try {
   await A.getByText("Pick the category this money comes from.").waitFor();
   await A.locator("select").nth(2).selectOption({ label: "Rent" });
   await A.getByRole("button", { name: "Add", exact: true }).click();
-  await A.getByRole("button", { name: "Budget" }).click();
-  await until(async () => (await cell(A, "Rent")) === "1,250.00", "Rent paid for the Brokerage transfer");
-  assert.equal(await rta(A), "1,500.00");
+  await A.getByRole("button", { name: "Plan" }).click();
+  await until(async () => (await cell(A, "Rent")) === "Rp1.250", "Rent paid for the Brokerage transfer");
+  assert.equal(await rta(A), "Rp1.500");
   // Money coming back from a tracking account is income.
   await A.getByRole("button", { name: "All transactions" }).click();
   await A.getByRole("button", { name: "Transfer", exact: true }).click();
@@ -212,8 +212,8 @@ try {
   await A.locator("select").nth(1).selectOption({ label: "Checking" });
   await A.getByPlaceholder("Amount").fill("100");
   await A.getByRole("button", { name: "Add", exact: true }).click();
-  await A.getByRole("button", { name: "Budget" }).click();
-  await until(async () => (await rta(A)) === "1,600.00", "transfer in from tracking is income");
+  await A.getByRole("button", { name: "Plan" }).click();
+  await until(async () => (await rta(A)) === "Rp1.600", "transfer in from tracking is income");
 
   // D6/D7: splits sum to the amount.
   await A.getByRole("button", { name: "All transactions" }).click();
@@ -233,9 +233,9 @@ try {
   await A.locator('[data-split-line="1"] input').fill("30");
   await A.getByRole("button", { name: "Add", exact: true }).click();
   await A.getByText("Split (2)").waitFor();
-  await A.getByRole("button", { name: "Budget" }).click();
-  await until(async () => (await cell(A, "Rent")) === "1,190.00", "split line hit Rent");
-  assert.equal(await cell(A, "Fun"), "-30.00");
+  await A.getByRole("button", { name: "Plan" }).click();
+  await until(async () => (await cell(A, "Rent")) === "Rp1.190", "split line hit Rent");
+  assert.equal(await cell(A, "Fun"), "-Rp30");
 
   // Editing an existing transaction.
   await A.getByRole("button", { name: "All transactions" }).click();
@@ -246,21 +246,21 @@ try {
   await A.locator("tr[data-tx]", { hasText: "coffee" }).getByLabel("Edit transaction").click();
   await A.locator("tr[data-tx] form").getByPlaceholder("Amount").fill("8");
   await A.locator("tr[data-tx] form").getByRole("button", { name: "Save" }).click();
-  await A.getByRole("button", { name: "Budget" }).click();
-  await until(async () => (await cell(A, "Fun")) === "-38.00", "edit changed the amount");
+  await A.getByRole("button", { name: "Plan" }).click();
+  await until(async () => (await cell(A, "Fun")) === "-Rp38", "edit changed the amount");
 
   // Everything converges on the other device.
   await B.evaluate(() => window.zs.sync());
-  await until(async () => (await cell(B, "Fun")) === "-38.00", "B sees the edit");
-  assert.equal(await cell(B, "Rent"), "1,190.00");
-  assert.equal(await rta(B), "1,600.00");
-  assert.equal(await rta(A), "1,600.00");
+  await until(async () => (await cell(B, "Fun")) === "-Rp38", "B sees the edit");
+  assert.equal(await cell(B, "Rent"), "Rp1.190");
+  assert.equal(await rta(B), "Rp1.600");
+  assert.equal(await rta(A), "Rp1.600");
 
   // Reload B with no network: the shell comes from the service worker, data from IndexedDB.
   await B.evaluate(() => navigator.serviceWorker.ready);
   await b.ctx.setOffline(true);
   await B.reload();
-  await until(async () => (await rta(B)) === "1,600.00", "B reload offline");
+  await until(async () => (await rta(B)) === "Rp1.600", "B reload offline");
   console.log("OK");
 } finally {
   await browser?.close();

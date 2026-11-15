@@ -58,20 +58,20 @@ try {
   // Ready to Assign is untouched and the Visa row stays at zero.
   const row = page.locator('[data-cat="card:Visa"]');
   await row.waitFor();
-  assert.equal(await page.getByTestId("rta").innerText(), "3,000.00");
-  assert.equal(await row.locator("td.avail").innerText(), "0.00");
+  assert.equal(await page.getByTestId("rta").innerText(), "Rp3.000");
+  assert.equal(await row.locator("td.avail").innerText(), "Rp0");
 
   // Assign 500 to Rent, then the 200 card spend is covered and moves to the Visa row.
   await page.locator('[data-cat="Rent"] input.num').fill("500");
   await page.locator('[data-cat="Rent"] input.num').press("Enter");
-  await until(async () => (await row.locator("td.avail").innerText()) === "200.00", "Visa row shows moved money");
-  assert.equal(await page.getByTestId("rta").innerText(), "2,500.00");
+  await until(async () => (await row.locator("td.avail").innerText()) === "Rp200", "Visa row shows moved money");
+  assert.equal(await page.getByTestId("rta").innerText(), "Rp2.500");
 
   // Assign 50 straight to the payment category.
   await row.locator("input.num").fill("50");
   await row.locator("input.num").press("Enter");
-  await until(async () => (await row.locator("td.avail").innerText()) === "250.00", "assigned to Visa row");
-  assert.equal(await page.getByTestId("rta").innerText(), "2,450.00");
+  await until(async () => (await row.locator("td.avail").innerText()) === "Rp250", "assigned to Visa row");
+  assert.equal(await page.getByTestId("rta").innerText(), "Rp2.450");
   console.log("card e2e ok");
 } finally {
   await browser?.close();
