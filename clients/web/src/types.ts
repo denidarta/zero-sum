@@ -1,10 +1,4 @@
-export type Kind =
-  | "account"
-  | "category_group"
-  | "category"
-  | "payee"
-  | "transaction"
-  | "budget_entry";
+export type Kind = "account" | "category_group" | "category" | "payee" | "transaction" | "budget_entry";
 
 export interface Stamp {
   ts: number;

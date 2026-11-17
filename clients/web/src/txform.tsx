@@ -27,7 +27,7 @@ export function TxForm(p: { db: Db; account?: string; editing?: Entity; onDone?:
     account: editing?.data.account_id ?? p.account ?? firstAccount,
     to: editingTransfer
       ? (editing!.data.transfer_account_id as string)
-      : accounts.find((a) => a.id !== (p.account ?? firstAccount))?.id ?? "",
+      : (accounts.find((a) => a.id !== (p.account ?? firstAccount))?.id ?? ""),
     payee: (editing && db.get("payee", editing.data.payee_id)?.data.name) ?? "",
     category: (editing?.data.category_id as string | null) ?? "",
     memo: editing?.data.memo ?? "",
@@ -82,8 +82,7 @@ export function TxForm(p: { db: Db; account?: string; editing?: Entity; onDone?:
     if (f.split) {
       if (lines.some((l, i) => !l.category || lineMs[i] === null || lineMs[i] === 0))
         return setError("Every split line needs a category and an amount.");
-      if (lineSum !== mag)
-        return setError(`Split lines add up to ${fmt(lineSum)}, but the amount is ${fmt(mag)}.`);
+      if (lineSum !== mag) return setError(`Split lines add up to ${fmt(lineSum)}, but the amount is ${fmt(mag)}.`);
       splits = lines.map((l, i) => ({
         category_id: l.category,
         amount: f.inflow ? Math.abs(lineMs[i]!) : -Math.abs(lineMs[i]!),
@@ -176,12 +175,8 @@ export function TxForm(p: { db: Db; account?: string; editing?: Entity; onDone?:
         </>
       ) : (
         <>
-          <label>
-            From {accountSelect(from, "account", editingTransfer)}
-          </label>
-          <label>
-            To {accountSelect(to, "to", editingTransfer)}
-          </label>
+          <label>From {accountSelect(from, "account", editingTransfer)}</label>
+          <label>To {accountSelect(to, "to", editingTransfer)}</label>
           {needsCategory && catSelect(f.category, set("category"), "Category (required)")}
         </>
       )}
@@ -210,16 +205,32 @@ export function TxForm(p: { db: Db; account?: string; editing?: Entity; onDone?:
         <div class="splits">
           {lines.map((l, i) => (
             <div class="inline" data-split-line={i}>
-              {catSelect(l.category, (e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, category: (e.target as HTMLSelectElement).value } : x))), "Category")}
+              {catSelect(
+                l.category,
+                (e) =>
+                  setLines((ls) =>
+                    ls.map((x, j) => (j === i ? { ...x, category: (e.target as HTMLSelectElement).value } : x)),
+                  ),
+                "Category",
+              )}
               <input
                 class="num"
                 inputMode="decimal"
                 placeholder="Line amount"
                 value={l.amount}
-                onInput={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, amount: (e.target as HTMLInputElement).value } : x)))}
+                onInput={(e) =>
+                  setLines((ls) =>
+                    ls.map((x, j) => (j === i ? { ...x, amount: (e.target as HTMLInputElement).value } : x)),
+                  )
+                }
               />
               {lines.length > 1 && (
-                <button type="button" class="link" title="Remove line" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>
+                <button
+                  type="button"
+                  class="link"
+                  title="Remove line"
+                  onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
+                >
                   ×
                 </button>
               )}

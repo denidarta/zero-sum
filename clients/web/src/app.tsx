@@ -41,10 +41,7 @@ export function App({ db }: { db: Db }) {
     balances.set(t.data.account_id, (balances.get(t.data.account_id) ?? 0) + t.data.amount);
   }
 
-  const budget = useMemo(
-    () => computeBudget([...db.entities.values()], month),
-    [db.version, month],
-  );
+  const budget = useMemo(() => computeBudget([...db.entities.values()], month), [db.version, month]);
 
   const open = accounts.filter((a) => !a.data.closed);
   const credit = (a: Entity) => a.data.kind === "credit_card" || a.data.kind === "line_of_credit";
@@ -151,7 +148,11 @@ function AddAccount({ db }: { db: Db }) {
     <form class="stack" onSubmit={add}>
       <input placeholder="New account" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
       <label>
-        <input type="checkbox" checked={onBudget} onChange={(e) => setOnBudget((e.target as HTMLInputElement).checked)} />{" "}
+        <input
+          type="checkbox"
+          checked={onBudget}
+          onChange={(e) => setOnBudget((e.target as HTMLInputElement).checked)}
+        />{" "}
         On budget
       </label>
       <button>Add account</button>
@@ -165,8 +166,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "over", label: "Overspent" },
   { id: "avail", label: "Money Available" },
 ];
-const matches = (f: Filter, available: number) =>
-  f === "all" || (f === "over" ? available < 0 : available > 0);
+const matches = (f: Filter, available: number) => f === "all" || (f === "over" ? available < 0 : available > 0);
 
 const monthLabel = (m: string) => {
   const [y, mo] = m.split("-").map(Number) as [number, number];
@@ -181,7 +181,8 @@ function progress(r: CategoryMonth | undefined) {
   if (funded <= 0) return { text: "", pct: 0, over: false };
   const pct = Math.min(100, Math.round((-r.activity / funded) * 100));
   if (r.available === 0) return { text: "Fully spent", pct: 100, over: false };
-  const text = r.activity < 0 ? `Funded. Spent ${fmtMoney(-r.activity)} of ${fmtMoney(funded)}` : `Funded ${fmtMoney(funded)}`;
+  const text =
+    r.activity < 0 ? `Funded. Spent ${fmtMoney(-r.activity)} of ${fmtMoney(funded)}` : `Funded ${fmtMoney(funded)}`;
   return { text, pct, over: false };
 }
 
@@ -196,12 +197,7 @@ function Pill({ available }: { available: number }) {
   );
 }
 
-function BudgetView(p: {
-  db: Db;
-  month: string;
-  setMonth: (m: string) => void;
-  budget: BudgetMonth;
-}) {
+function BudgetView(p: { db: Db; month: string; setMonth: (m: string) => void; budget: BudgetMonth }) {
   const { db, month, budget } = p;
   const rows = new Map(budget.categories.map((c) => [c.category_id, c]));
   const groups = db.list("category_group").sort(byName);
@@ -251,7 +247,12 @@ function BudgetView(p: {
             <div class="l1">
               <span>
                 {c.data.name}
-                <button class="link" title="Delete category" aria-label={`Delete category ${c.data.name}`} onClick={() => deleteCategory(c)}>
+                <button
+                  class="link"
+                  title="Delete category"
+                  aria-label={`Delete category ${c.data.name}`}
+                  onClick={() => deleteCategory(c)}
+                >
                   ×
                 </button>
                 {orphaned.has(c.id) && (
@@ -319,7 +320,11 @@ function BudgetView(p: {
       </header>
       <div class="chips" role="group" aria-label="Filter categories">
         {FILTERS.map((f) => (
-          <button class={`chip ${filter === f.id ? "on" : ""}`} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
+          <button
+            class={`chip ${filter === f.id ? "on" : ""}`}
+            aria-pressed={filter === f.id}
+            onClick={() => setFilter(f.id)}
+          >
             {filter === f.id && <Icon d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" size={18} />}
             {f.label}
           </button>
@@ -338,7 +343,11 @@ function BudgetView(p: {
             }}
           >
             <Icon d={path.add} size={20} />
-            <input placeholder="New category group" value={newGroup} onInput={(e) => setNewGroup((e.target as HTMLInputElement).value)} />
+            <input
+              placeholder="New category group"
+              value={newGroup}
+              onInput={(e) => setNewGroup((e.target as HTMLInputElement).value)}
+            />
             <button>Add group</button>
           </form>
           <div class="scroll">
@@ -371,7 +380,12 @@ function BudgetView(p: {
                           </span>
                         </button>
                         {g.data.name}
-                        <button class="link" title="Delete group" aria-label={`Delete group ${g.data.name}`} onClick={() => removeGroup(g)}>
+                        <button
+                          class="link"
+                          title="Delete group"
+                          aria-label={`Delete group ${g.data.name}`}
+                          onClick={() => removeGroup(g)}
+                        >
                           ×
                         </button>
                       </th>
@@ -446,10 +460,22 @@ function Summary({ budget, month }: { budget: BudgetMonth; month: string }) {
   return (
     <section class="card">
       <h2>{name}'s Summary</h2>
-      <div class="kv"><span>Left Over from Last Month</span><span>{fmtMoney(available - assigned - activity)}</span></div>
-      <div class="kv"><span>Assigned in {name}</span><span>{fmtMoney(assigned)}</span></div>
-      <div class="kv"><span>Activity</span><span>{fmtMoney(activity)}</span></div>
-      <div class="kv total"><span>Available</span><span>{fmtMoney(available)}</span></div>
+      <div class="kv">
+        <span>Left Over from Last Month</span>
+        <span>{fmtMoney(available - assigned - activity)}</span>
+      </div>
+      <div class="kv">
+        <span>Assigned in {name}</span>
+        <span>{fmtMoney(assigned)}</span>
+      </div>
+      <div class="kv">
+        <span>Activity</span>
+        <span>{fmtMoney(activity)}</span>
+      </div>
+      <div class="kv total">
+        <span>Available</span>
+        <span>{fmtMoney(available)}</span>
+      </div>
     </section>
   );
 }
@@ -465,7 +491,8 @@ function AutoAssignPanel({ db, month, budget }: { db: Db; month: string; budget:
   const apply = (o: (typeof options)[number]) => {
     if (!confirm(`${o.label}: replace this month's assigned amounts?`)) return;
     for (const [id, v] of o.amounts) {
-      if (have.get(id) !== v) db.edit("budget_entry", budgetEntryId(id, month), { category_id: id, month, assigned: v });
+      if (have.get(id) !== v)
+        db.edit("budget_entry", budgetEntryId(id, month), { category_id: id, month, assigned: v });
     }
   };
 
@@ -478,8 +505,11 @@ function AutoAssignPanel({ db, month, budget }: { db: Db; month: string; budget:
     </li>
   );
   const [lastAssigned, lastSpent, avgAssigned, avgSpent, reset] = options as [
-    (typeof options)[number], (typeof options)[number], (typeof options)[number],
-    (typeof options)[number], (typeof options)[number],
+    (typeof options)[number],
+    (typeof options)[number],
+    (typeof options)[number],
+    (typeof options)[number],
+    (typeof options)[number],
   ];
 
   return (
@@ -502,7 +532,10 @@ function AutoAssignPanel({ db, month, budget }: { db: Db; month: string; budget:
 /** D3: a category with transactions is deleted only after they are deleted or moved. */
 function DeleteCategory({ db, category, onDone }: { db: Db; category: Entity; onDone: () => void }) {
   const n = categoryTxCount(db, category.id);
-  const others = db.list("category").filter((c) => c.id !== category.id).sort(byName);
+  const others = db
+    .list("category")
+    .filter((c) => c.id !== category.id)
+    .sort(byName);
   const [target, setTarget] = useState("");
   return (
     <div class="modal" role="dialog" aria-label={`Delete category ${category.data.name}`}>
@@ -530,7 +563,8 @@ function DeleteCategory({ db, category, onDone }: { db: Db; category: Entity; on
       <div class="inline">
         <button
           onClick={() => {
-            if (!confirm(`Delete ${n} transaction${n === 1 ? "" : "s"} and the category? This cannot be undone.`)) return;
+            if (!confirm(`Delete ${n} transaction${n === 1 ? "" : "s"} and the category? This cannot be undone.`))
+              return;
             deleteCategoryTransactions(db, category.id);
             onDone();
           }}
@@ -584,7 +618,11 @@ function AddCategory({ db, groupId }: { db: Db; groupId: string }) {
             setName("");
           }}
         >
-          <input placeholder="Add category" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+          <input
+            placeholder="Add category"
+            value={name}
+            onInput={(e) => setName((e.target as HTMLInputElement).value)}
+          />
         </form>
       </td>
     </tr>
@@ -596,8 +634,7 @@ function Transactions({ db, account }: { db: Db; account?: string }) {
   const categories = db.list("category").sort(byName);
   const payees = db.list("payee");
   const [editing, setEditing] = useState<string | null>(null);
-  const nameOf = (list: Entity[], id?: string | null) =>
-    list.find((e) => e.id === id)?.data.name ?? "";
+  const nameOf = (list: Entity[], id?: string | null) => list.find((e) => e.id === id)?.data.name ?? "";
 
   const txs = db
     .list("transaction")
@@ -612,7 +649,12 @@ function Transactions({ db, account }: { db: Db; account?: string }) {
     return (
       <>
         {t.data.amount < 0 ? `Transfer to ${other}` : `Transfer from ${other}`}
-        {isUnmatched(db, t) && <em class="neg" title="The other leg is missing"> (unmatched)</em>}
+        {isUnmatched(db, t) && (
+          <em class="neg" title="The other leg is missing">
+            {" "}
+            (unmatched)
+          </em>
+        )}
       </>
     );
   };
