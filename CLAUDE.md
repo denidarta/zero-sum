@@ -1,0 +1,4 @@
+- keep DRY principle when writing code
+- build the codes in modular
+- separate frontend components and backend, keep logic and business in the backend
+- this is a personal project, the server and client will be myself. This project will not be exposed to the public web.
