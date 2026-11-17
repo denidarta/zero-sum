@@ -13,8 +13,7 @@ export function computeBudget(entities: Entity[], month: string): BudgetMonth {
   return JSON.parse(budget(JSON.stringify(entities), month));
 }
 
-export const budgetEntryId = (categoryId: string, month: string): string =>
-  entry_id(categoryId, month);
+export const budgetEntryId = (categoryId: string, month: string): string => entry_id(categoryId, month);
 
 export interface Patch {
   kind: Kind;

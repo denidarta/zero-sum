@@ -18,8 +18,7 @@ export function autoAssigns(prev: BudgetMonth[], current: BudgetMonth): AutoAssi
   const ids = current.categories.map((c) => c.category_id);
   const mean = (get: (b: BudgetMonth, id: string) => number) => (id: string) =>
     roundUnit(prev.reduce((s, b) => s + get(b, id), 0) / Math.max(prev.length, 1));
-  const assigned = (b: BudgetMonth, id: string) =>
-    b.categories.find((c) => c.category_id === id)?.assigned ?? 0;
+  const assigned = (b: BudgetMonth, id: string) => b.categories.find((c) => c.category_id === id)?.assigned ?? 0;
   const spent = (b: BudgetMonth, id: string) =>
     Math.max(0, -(b.categories.find((c) => c.category_id === id)?.activity ?? 0));
   const make = (id: string, label: string, pick: (id: string) => number): AutoAssign => {

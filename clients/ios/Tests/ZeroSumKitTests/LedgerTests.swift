@@ -6,7 +6,8 @@ import XCTest
 final class LedgerTests: XCTestCase {
     func testOfflineEditIsQueuedAndSurvivesRestart() async throws {
         let path = tempDBPath()
-        let ledger = try Ledger(store: LocalStore(path: path), defaults: defaults(server: "http://localhost:1"), transport: { _ in Down() })
+        let ledger = try Ledger(
+            store: LocalStore(path: path), defaults: defaults(server: "http://localhost:1"), transport: { _ in Down() })
         let id = Ledger.newID()
         try ledger.edit(.account, id, ["name": "Cash", "kind": "cash"])
         await ledger.sync()
@@ -14,7 +15,8 @@ final class LedgerTests: XCTestCase {
         XCTAssertEqual(ledger.outbox.count, 1)
         XCTAssertEqual(ledger.entities["account:\(id)"]?.name, "Cash")
 
-        let reopened = try Ledger(store: LocalStore(path: path), defaults: defaults(server: nil), transport: { _ in Down() })
+        let reopened = try Ledger(
+            store: LocalStore(path: path), defaults: defaults(server: nil), transport: { _ in Down() })
         XCTAssertEqual(reopened.outbox.count, 1)
         XCTAssertEqual(reopened.list(.account).map(\.name), ["Cash"])
         XCTAssertEqual(reopened.deviceId, ledger.deviceId)
@@ -41,7 +43,8 @@ final class LedgerTests: XCTestCase {
         let ledger = try Ledger(store: LocalStore(), defaults: defaults(server: nil))
         let acct = Ledger.newID()
         try ledger.edit(.account, acct, ["name": "Checking", "kind": "checking"])
-        try ledger.edit(.transaction, Ledger.newID(), ["account_id": .string(acct), "date": "2026-10-01", "amount": 5_000])
+        try ledger.edit(
+            .transaction, Ledger.newID(), ["account_id": .string(acct), "date": "2026-10-01", "amount": 5_000])
         XCTAssertEqual(ledger.budget(month: "2026-10").readyToAssign, 5_000)
         XCTAssertEqual(ledger.balances()[acct], 5_000)
     }

@@ -28,7 +28,9 @@ extension Entity {
     public var splits: [SplitLine] {
         guard case .array(let lines)? = data["splits"] else { return [] }
         return lines.compactMap { v in
-            guard case .object(let o) = v, let c = o["category_id"]?.string, let a = o["amount"]?.int else { return nil }
+            guard case .object(let o) = v, let c = o["category_id"]?.string, let a = o["amount"]?.int else {
+                return nil
+            }
             return SplitLine(categoryId: c, amount: a, memo: o["memo"]?.string)
         }
     }
@@ -45,7 +47,9 @@ extension Ledger {
     /// A transfer leg whose partner is gone, for example after a concurrent delete.
     public func isUnmatched(_ t: Entity) -> Bool { t.isTransfer && partner(of: t) == nil }
 
-    private func onBudget(_ account: String) -> Bool { get(.account, account)?.bool("on_budget", default: true) ?? false }
+    private func onBudget(_ account: String) -> Bool {
+        get(.account, account)?.bool("on_budget", default: true) ?? false
+    }
 
     /// Whether the form shows a category picker. The core enforces D5 when the transfer is saved.
     public func transferNeedsCategory(from: String, to: String) -> Bool { onBudget(from) && !onBudget(to) }

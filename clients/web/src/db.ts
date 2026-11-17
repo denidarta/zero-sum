@@ -133,8 +133,7 @@ export class Db {
         body: JSON.stringify({ device_id: this.deviceId, ops: batch }),
       });
       if (!res.ok) throw new Error(`push ${res.status}`);
-      const out: { results: { op_id: string; status: string; reason?: string }[] } =
-        await res.json();
+      const out: { results: { op_id: string; status: string; reason?: string }[] } = await res.json();
       for (const r of out.results) {
         if (r.status === "rejected") console.warn("op rejected", r.reason);
       }

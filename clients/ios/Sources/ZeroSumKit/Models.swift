@@ -41,7 +41,10 @@ public struct Op: Codable, Hashable, Sendable {
     public var deleted: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case opId = "op_id", ts, kind, entityId = "entity_id", fields, deleted
+        case opId = "op_id"
+        case ts, kind
+        case entityId = "entity_id"
+        case fields, deleted
     }
 }
 
@@ -64,7 +67,10 @@ public struct OpResult: Codable {
     public let status: String
     public let reason: String?
 
-    enum CodingKeys: String, CodingKey { case opId = "op_id", status, reason }
+    enum CodingKeys: String, CodingKey {
+        case opId = "op_id"
+        case status, reason
+    }
 }
 
 public struct PushOutcome: Decodable {
@@ -77,7 +83,10 @@ public struct PullPage: Decodable {
     public let cursor: Int64
     public let hasMore: Bool
 
-    enum CodingKeys: String, CodingKey { case changes, cursor, hasMore = "has_more" }
+    enum CodingKeys: String, CodingKey {
+        case changes, cursor
+        case hasMore = "has_more"
+    }
 }
 
 public struct CategoryMonth: Codable, Hashable {
@@ -87,7 +96,8 @@ public struct CategoryMonth: Codable, Hashable {
     public let available: Int64
 
     enum CodingKeys: String, CodingKey {
-        case categoryId = "category_id", assigned, activity, available
+        case categoryId = "category_id"
+        case assigned, activity, available
     }
     public init(categoryId: String, assigned: Int64, activity: Int64, available: Int64) {
         self.categoryId = categoryId
@@ -106,7 +116,9 @@ public struct CardPaymentMonth: Codable, Hashable {
     public let available: Int64
 
     enum CodingKeys: String, CodingKey {
-        case accountId = "account_id", categoryId = "category_id", assigned, activity, available
+        case accountId = "account_id"
+        case categoryId = "category_id"
+        case assigned, activity, available
     }
 }
 
@@ -120,12 +132,17 @@ public struct BudgetMonth: Codable, Hashable {
     public let cardPayments: [CardPaymentMonth]
 
     enum CodingKeys: String, CodingKey {
-        case month, readyToAssign = "ready_to_assign", categories
+        case month
+        case readyToAssign = "ready_to_assign"
+        case categories
         case orphanedCategoryIds = "orphaned_category_ids"
         case cardPayments = "card_payments"
     }
 
-    public init(month: String, readyToAssign: Int64, categories: [CategoryMonth], orphanedCategoryIds: [String] = [], cardPayments: [CardPaymentMonth] = []) {
+    public init(
+        month: String, readyToAssign: Int64, categories: [CategoryMonth], orphanedCategoryIds: [String] = [],
+        cardPayments: [CardPaymentMonth] = []
+    ) {
         self.month = month
         self.readyToAssign = readyToAssign
         self.categories = categories

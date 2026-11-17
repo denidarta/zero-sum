@@ -26,7 +26,8 @@ struct AccountsView: View {
             }
             .overlay {
                 if ledger.list(.account).isEmpty {
-                    ContentUnavailableView("No accounts", systemImage: "building.columns",
+                    ContentUnavailableView(
+                        "No accounts", systemImage: "building.columns",
                         description: Text("Add one with the plus button."))
                 }
             }
@@ -34,8 +35,12 @@ struct AccountsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { SyncBadge() }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { adding = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Add account")
+                    Button {
+                        adding = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Add account")
                 }
             }
             .sheet(isPresented: $adding) { AddAccountSheet() }
@@ -69,11 +74,13 @@ private struct AddAccountSheet: View {
 
     private func save() {
         ledger.run {
-            try ledger.edit(.account, Ledger.newID(), [
-                "name": .string(name.trimmingCharacters(in: .whitespaces)),
-                "kind": .string(onBudget ? "checking" : "other"),
-                "on_budget": .bool(onBudget),
-            ])
+            try ledger.edit(
+                .account, Ledger.newID(),
+                [
+                    "name": .string(name.trimmingCharacters(in: .whitespaces)),
+                    "kind": .string(onBudget ? "checking" : "other"),
+                    "on_budget": .bool(onBudget),
+                ])
         }
         dismiss()
     }

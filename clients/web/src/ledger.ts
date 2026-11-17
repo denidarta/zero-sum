@@ -39,8 +39,7 @@ export const byNewest = (a: Entity, b: Entity) =>
   (a.id < b.id ? -1 : 1);
 
 /** Whether the form shows a category picker. The core enforces D5 when the transfer is saved. */
-export const transferNeedsCategory = (db: Db, from: string, to: string) =>
-  onBudget(db, from) && !onBudget(db, to);
+export const transferNeedsCategory = (db: Db, from: string, to: string) => onBudget(db, from) && !onBudget(db, to);
 
 export interface TransferInput {
   date: string;
@@ -53,8 +52,7 @@ export interface TransferInput {
   categoryId: string | null;
 }
 
-const plan = (db: Db, command: Record<string, unknown>) =>
-  planLedger([...db.entities.values()], command);
+const plan = (db: Db, command: Record<string, unknown>) => planLedger([...db.entities.values()], command);
 
 /** Plan an action in the core, then write each patch. Throws the core's message when not allowed. */
 function run(db: Db, command: Record<string, unknown>) {
@@ -94,14 +92,12 @@ export const editTransfer = (
   });
 
 /** Delete a transaction. A transfer takes its other leg with it. */
-export const removeTransaction = (db: Db, t: Entity) =>
-  run(db, { command: "remove_transaction", id: t.id });
+export const removeTransaction = (db: Db, t: Entity) => run(db, { command: "remove_transaction", id: t.id });
 
 /** How many transactions deleting this category would remove, as the core counts them. */
 export const categoryTxCount = (db: Db, categoryId: string) =>
-  plan(db, { command: "delete_category_transactions", category_id: categoryId }).filter(
-    (p) => p.kind === "transaction",
-  ).length;
+  plan(db, { command: "delete_category_transactions", category_id: categoryId }).filter((p) => p.kind === "transaction")
+    .length;
 
 /** D1: the core refuses while the group has categories. Both throw its message. */
 const groupDelete = (groupId: string) => ({ command: "delete_group", group_id: groupId });

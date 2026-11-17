@@ -23,7 +23,10 @@ public struct HTTPTransport: Transport {
         struct Body: Encodable {
             let deviceId: String
             let ops: [Op]
-            enum CodingKeys: String, CodingKey { case deviceId = "device_id", ops }
+            enum CodingKeys: String, CodingKey {
+                case deviceId = "device_id"
+                case ops
+            }
         }
         var req = URLRequest(url: base.appendingPathComponent("sync/push"))
         req.httpMethod = "POST"

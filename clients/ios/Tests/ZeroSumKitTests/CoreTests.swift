@@ -28,7 +28,9 @@ final class CoreTests: XCTestCase {
     }
 
     func testBudgetMath() throws {
-        let acct = Ledger.newID(), group = Ledger.newID(), cat = Ledger.newID()
+        let acct = Ledger.newID()
+        let group = Ledger.newID()
+        let cat = Ledger.newID()
         let month = "2026-10"
         let entry = try Core.entryId(category: cat, month: month)
         var entities: [Entity] = []
@@ -39,9 +41,11 @@ final class CoreTests: XCTestCase {
         try add(.categoryGroup, group, ["name": "Bills"])
         try add(.category, cat, ["group_id": .string(group), "name": "Rent"])
         try add(.transaction, Ledger.newID(), ["account_id": .string(acct), "date": "2026-10-01", "amount": 3_000_000])
-        try add(.transaction, Ledger.newID(), [
-            "account_id": .string(acct), "date": "2026-10-05", "amount": -400_000, "category_id": .string(cat),
-        ])
+        try add(
+            .transaction, Ledger.newID(),
+            [
+                "account_id": .string(acct), "date": "2026-10-05", "amount": -400_000, "category_id": .string(cat),
+            ])
         try add(.budgetEntry, entry, ["category_id": .string(cat), "month": "2026-10", "assigned": 1_000_000])
 
         let b = try Core.budget(entities, month: month)
@@ -55,7 +59,10 @@ final class CoreTests: XCTestCase {
     }
 
     func testBudgetReturnsCardPaymentRows() throws {
-        let checking = Ledger.newID(), card = Ledger.newID(), group = Ledger.newID(), cat = Ledger.newID()
+        let checking = Ledger.newID()
+        let card = Ledger.newID()
+        let group = Ledger.newID()
+        let cat = Ledger.newID()
         let month = "2026-10"
         var entities: [Entity] = []
         func add(_ kind: Kind, _ id: String, _ fields: [String: JSONValue]) throws {
@@ -65,13 +72,18 @@ final class CoreTests: XCTestCase {
         try add(.account, card, ["name": "Visa", "kind": "credit_card", "on_budget": true])
         try add(.categoryGroup, group, ["name": "Bills"])
         try add(.category, cat, ["group_id": .string(group), "name": "Rent"])
-        try add(.transaction, Ledger.newID(), ["account_id": .string(checking), "date": "2026-10-01", "amount": 1_000_000])
-        try add(.transaction, Ledger.newID(), [
-            "account_id": .string(card), "date": "2026-10-05", "amount": -200_000, "category_id": .string(cat),
-        ])
-        try add(.budgetEntry, try Core.entryId(category: cat, month: month), [
-            "category_id": .string(cat), "month": .string(month), "assigned": 500_000,
-        ])
+        try add(
+            .transaction, Ledger.newID(), ["account_id": .string(checking), "date": "2026-10-01", "amount": 1_000_000])
+        try add(
+            .transaction, Ledger.newID(),
+            [
+                "account_id": .string(card), "date": "2026-10-05", "amount": -200_000, "category_id": .string(cat),
+            ])
+        try add(
+            .budgetEntry, try Core.entryId(category: cat, month: month),
+            [
+                "category_id": .string(cat), "month": .string(month), "assigned": 500_000,
+            ])
 
         let b = try Core.budget(entities, month: month)
         let row = try XCTUnwrap(b.cardPayments.first { $0.accountId == card })

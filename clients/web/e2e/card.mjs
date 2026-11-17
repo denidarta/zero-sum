@@ -18,13 +18,20 @@ const dir = mkdtempSync(join(tmpdir(), "zs-card-"));
 const port = 19500 + Math.floor(Math.random() * 400);
 const base = `http://127.0.0.1:${port}`;
 const server = spawn(join(root, "target/debug/zero-sum-server"), [], {
-  env: { ...process.env, ZERO_SUM_ADDR: `127.0.0.1:${port}`, ZERO_SUM_DB: join(dir, "e2e.db"), ZERO_SUM_WEB_DIR: join(root, "clients/web/dist") },
+  env: {
+    ...process.env,
+    ZERO_SUM_ADDR: `127.0.0.1:${port}`,
+    ZERO_SUM_DB: join(dir, "e2e.db"),
+    ZERO_SUM_WEB_DIR: join(root, "clients/web/dist"),
+  },
   stdio: "inherit",
 });
 const until = async (f, what, ms = 8000) => {
   const end = Date.now() + ms;
   for (;;) {
-    try { if (await f()) return; } catch {}
+    try {
+      if (await f()) return;
+    } catch {}
     if (Date.now() > end) throw new Error(`timeout: ${what}`);
     await new Promise((r) => setTimeout(r, 100));
   }
@@ -45,12 +52,18 @@ try {
     op("transaction", randomUUID(), { account_id: checking, date: `${month}-01`, amount: 3_000_000 }),
     op("transaction", randomUUID(), { account_id: card, date: `${month}-02`, amount: -200_000, category_id: rent }),
   ];
-  const res = await fetch(`${base}/sync/push`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ device_id: "e2e", ops }) });
+  const res = await fetch(`${base}/sync/push`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ device_id: "e2e", ops }),
+  });
   assert.ok(res.ok, await res.text());
 
   browser = await chromium.launch();
   const page = await (await browser.newContext()).newPage();
-  page.on("pageerror", (e) => { throw e; });
+  page.on("pageerror", (e) => {
+    throw e;
+  });
   await page.goto(base);
   await page.getByTestId("rta").waitFor();
 

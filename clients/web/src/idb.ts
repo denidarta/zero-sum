@@ -16,11 +16,7 @@ function open(): Promise<IDBDatabase> {
   return dbp;
 }
 
-async function run<T>(
-  store: StoreName,
-  mode: IDBTransactionMode,
-  f: (s: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
+async function run<T>(store: StoreName, mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const db = await open();
   return new Promise((resolve, reject) => {
     const req = f(db.transaction(store, mode).objectStore(store));
@@ -31,9 +27,7 @@ async function run<T>(
 
 export const idb = {
   all: <T>(store: StoreName) => run<T[]>(store, "readonly", (s) => s.getAll()),
-  get: <T>(store: StoreName, key: string) =>
-    run<T | undefined>(store, "readonly", (s) => s.get(key)),
-  put: (store: StoreName, key: string, value: unknown) =>
-    run(store, "readwrite", (s) => s.put(value, key)),
+  get: <T>(store: StoreName, key: string) => run<T | undefined>(store, "readonly", (s) => s.get(key)),
+  put: (store: StoreName, key: string, value: unknown) => run(store, "readwrite", (s) => s.put(value, key)),
   del: (store: StoreName, key: string) => run(store, "readwrite", (s) => s.delete(key)),
 };

@@ -51,7 +51,9 @@ try {
   const open = async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    page.on("pageerror", (e) => { throw e; });
+    page.on("pageerror", (e) => {
+      throw e;
+    });
     await page.goto(base);
     await page.getByTestId("rta").waitFor();
     return { ctx, page };
@@ -109,7 +111,10 @@ try {
 
   // ---- Ledger rules: docs/ledger-edits-spec.md ----
   const dialogs = [];
-  A.on("dialog", (d) => { dialogs.push(d.message()); d.accept(); });
+  A.on("dialog", (d) => {
+    dialogs.push(d.message());
+    d.accept();
+  });
   const cell = (page, cat) => page.locator(`[data-cat="${cat}"] td.avail`).innerText();
   const addCategory = async (n, name) => {
     await A.getByPlaceholder("Add category").nth(n).fill(name);
@@ -137,8 +142,14 @@ try {
   assert.match(dialogs.at(-1), /Delete group Temp/);
   await b.ctx.setOffline(false);
   await B.evaluate(() => window.zs.sync());
-  for (const [name, P] of [["A", A], ["B", B]]) {
-    await until(async () => (await P.getByTestId("orphaned").locator('[data-cat="Gym"]').count()) === 1, `${name} shows Gym as orphaned`);
+  for (const [name, P] of [
+    ["A", A],
+    ["B", B],
+  ]) {
+    await until(
+      async () => (await P.getByTestId("orphaned").locator('[data-cat="Gym"]').count()) === 1,
+      `${name} shows Gym as orphaned`,
+    );
     await until(async () => (await rta(P)) === "Rp1.300", `${name} keeps Gym's 200 assigned`);
   }
   // The user can move it to a real group.
@@ -188,7 +199,10 @@ try {
   await edit.getByPlaceholder("Memo").fill("rainy day");
   await edit.getByRole("button", { name: "Save" }).click();
   await until(async () => (await balance("Savings")) === "Rp150", "edit mirrored to the Checking leg");
-  assert.equal(await A.locator("tr[data-tx]", { hasText: "Transfer to Savings" }).locator(".memo").innerText(), "rainy day");
+  assert.equal(
+    await A.locator("tr[data-tx]", { hasText: "Transfer to Savings" }).locator(".memo").innerText(),
+    "rainy day",
+  );
   await A.locator("tr[data-tx]", { hasText: "Transfer to Savings" }).getByLabel("Delete transaction").click();
   assert.match(dialogs.at(-1), /both legs/);
   await until(async () => (await balance("Savings")) === "Rp0", "deleting one leg deletes both");
