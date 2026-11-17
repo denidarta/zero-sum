@@ -20,20 +20,28 @@ final class ServerTests: XCTestCase {
 
     func testTwoDevicesConverge() async throws {
         let url = try serverURL()
-        let a = try device(url), b = try device(url)
+        let a = try device(url)
+        let b = try device(url)
         let month = Money.thisMonth()
-        let acct = Ledger.newID(), group = Ledger.newID(), cat = Ledger.newID(), tx = Ledger.newID()
+        let acct = Ledger.newID()
+        let group = Ledger.newID()
+        let cat = Ledger.newID()
+        let tx = Ledger.newID()
 
         // A builds a budget and syncs.
         try a.edit(.account, acct, ["name": "Checking", "kind": "checking"])
         try a.edit(.categoryGroup, group, ["name": "Bills"])
         try a.edit(.category, cat, ["group_id": .string(group), "name": "Rent"])
-        try a.edit(.transaction, tx, [
-            "account_id": .string(acct), "date": .string(Money.dateString()), "amount": 3_000_000,
-        ])
-        try a.edit(.budgetEntry, a.entryId(category: cat, month: month), [
-            "category_id": .string(cat), "month": .string(month), "assigned": 1_000_000,
-        ])
+        try a.edit(
+            .transaction, tx,
+            [
+                "account_id": .string(acct), "date": .string(Money.dateString()), "amount": 3_000_000,
+            ])
+        try a.edit(
+            .budgetEntry, a.entryId(category: cat, month: month),
+            [
+                "category_id": .string(cat), "month": .string(month), "assigned": 1_000_000,
+            ])
         await a.sync()
         XCTAssertEqual(a.state, .idle)
         XCTAssertTrue(a.outbox.isEmpty)

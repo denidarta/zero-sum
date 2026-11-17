@@ -17,14 +17,15 @@ public final class LocalStore {
     public init(path: String? = nil) throws {
         queue = try path.map { try DatabaseQueue(path: $0) } ?? DatabaseQueue()
         try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE IF NOT EXISTS entities (
-                    kind TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL,
-                    PRIMARY KEY (kind, id));
-                CREATE TABLE IF NOT EXISTS outbox (
-                    op_id TEXT PRIMARY KEY, ts INTEGER NOT NULL, json TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                """)
+            try db.execute(
+                sql: """
+                    CREATE TABLE IF NOT EXISTS entities (
+                        kind TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL,
+                        PRIMARY KEY (kind, id));
+                    CREATE TABLE IF NOT EXISTS outbox (
+                        op_id TEXT PRIMARY KEY, ts INTEGER NOT NULL, json TEXT NOT NULL);
+                    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                    """)
         }
     }
 

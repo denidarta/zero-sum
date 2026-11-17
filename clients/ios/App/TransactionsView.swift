@@ -35,7 +35,9 @@ struct TransactionsView: View {
 
         List {
             ForEach(txs) { t in
-                Button { form = .edit(t) } label: {
+                Button {
+                    form = .edit(t)
+                } label: {
                     HStack(alignment: .firstTextBaseline) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(title(t, payees, accounts))
@@ -61,7 +63,9 @@ struct TransactionsView: View {
                 .swipeActions {
                     Button(role: .destructive) {
                         if t.isTransfer { deletingTransfer = t } else { remove(t) }
-                    } label: { Label("Delete", systemImage: "trash") }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 }
             }
         }
@@ -76,9 +80,13 @@ struct TransactionsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { SyncBadge() }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { form = .add } label: { Image(systemName: "plus") }
-                    .disabled(accounts.isEmpty)
-                    .accessibilityLabel("Add transaction")
+                Button {
+                    form = .add
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .disabled(accounts.isEmpty)
+                .accessibilityLabel("Add transaction")
             }
         }
         .sheet(item: $form) { target in
@@ -131,7 +139,10 @@ private struct TransactionForm: View {
     let account: String?
     let editing: Entity?
 
-    private enum Mode: String { case transaction = "Transaction", transfer = "Transfer" }
+    private enum Mode: String {
+        case transaction = "Transaction"
+        case transfer = "Transfer"
+    }
 
     private struct Line: Identifiable {
         let id = UUID()
@@ -165,7 +176,8 @@ private struct TransactionForm: View {
         let suggestions: [Entity] = name.isEmpty ? [] : Array(matches.prefix(4))
         let categories = ledger.sorted(.category)
         let (from, to) = transferEnds()
-        let needsCategory = mode == .transfer && !from.isEmpty && !to.isEmpty && ledger.transferNeedsCategory(from: from, to: to)
+        let needsCategory =
+            mode == .transfer && !from.isEmpty && !to.isEmpty && ledger.transferNeedsCategory(from: from, to: to)
         let total = Money.parse(amount).map { abs($0) } ?? 0
         let lineSum = lines.reduce(Int64(0)) { $0 + abs(Money.parse($1.amount) ?? 0) }
 
@@ -239,7 +251,9 @@ private struct TransactionForm: View {
                                     .multilineTextAlignment(.trailing)
                                     .frame(maxWidth: 110)
                                 if lines.count > 1 {
-                                    Button { lines.removeAll { $0.id == line.id } } label: {
+                                    Button {
+                                        lines.removeAll { $0.id == line.id }
+                                    } label: {
                                         Image(systemName: "minus.circle")
                                     }
                                     .buttonStyle(.borderless)
@@ -259,7 +273,9 @@ private struct TransactionForm: View {
                     Section { Text(error).foregroundStyle(.red) }
                 }
             }
-            .navigationTitle(editing == nil ? "New \(mode.rawValue.lowercased())" : "Edit \(mode.rawValue.lowercased())")
+            .navigationTitle(
+                editing == nil ? "New \(mode.rawValue.lowercased())" : "Edit \(mode.rawValue.lowercased())"
+            )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -316,23 +332,32 @@ private struct TransactionForm: View {
                 // The core checks the accounts, the amount and the category, and words the error.
                 let category = categoryId.isEmpty ? nil : categoryId
                 if let t = editing {
-                    try ledger.editTransfer(t, date: dateText, amount: magnitude, memo: memoText.isEmpty ? nil : memoText, cleared: cleared, categoryId: category)
+                    try ledger.editTransfer(
+                        t, date: dateText, amount: magnitude, memo: memoText.isEmpty ? nil : memoText, cleared: cleared,
+                        categoryId: category)
                 } else {
-                    try ledger.addTransfer(date: dateText, from: from, to: to, amount: magnitude, memo: memoText.isEmpty ? nil : memoText, cleared: cleared, categoryId: category)
+                    try ledger.addTransfer(
+                        date: dateText, from: from, to: to, amount: magnitude, memo: memoText.isEmpty ? nil : memoText,
+                        cleared: cleared, categoryId: category)
                 }
                 return dismiss()
             }
 
-            guard !accountId.isEmpty else { return error = "Pick an account." }
+            guard !accountId.isEmpty else {
+                error = "Pick an account."
+                return
+            }
             var splitLines: [SplitLine] = []
             if split {
                 let values = lines.map { Money.parse($0.amount) }
                 guard !lines.enumerated().contains(where: { $1.category.isEmpty || (values[$0] ?? 0) == 0 }) else {
-                    return error = "Every split line needs a category and an amount."
+                    error = "Every split line needs a category and an amount."
+                    return
                 }
                 let sum = values.reduce(Int64(0)) { $0 + abs($1 ?? 0) }
                 guard sum == magnitude else {
-                    return error = "Split lines add up to \(Money.format(sum)), but the amount is \(Money.format(magnitude))."
+                    error = "Split lines add up to \(Money.format(sum)), but the amount is \(Money.format(magnitude))."
+                    return
                 }
                 splitLines = lines.enumerated().map { i, l in
                     SplitLine(categoryId: l.category, amount: inflow ? abs(values[i]!) : -abs(values[i]!))

@@ -21,20 +21,26 @@ final class LedgerRulesTests: XCTestCase {
         try ledger.edit(.categoryGroup, group, ["name": "Bills"])
         try ledger.edit(.category, rent, ["group_id": .string(group), "name": "Rent"])
         try ledger.edit(.category, food, ["group_id": .string(group), "name": "Food"])
-        try ledger.edit(.transaction, Ledger.newID(), ["account_id": .string(checking), "date": "2026-10-01", "amount": 3_000_000])
+        try ledger.edit(
+            .transaction, Ledger.newID(), ["account_id": .string(checking), "date": "2026-10-01", "amount": 3_000_000])
     }
 
     private func assign(_ category: String, _ amount: Int64) throws {
-        try ledger.edit(.budgetEntry, ledger.entryId(category: category, month: month), [
-            "category_id": .string(category), "month": .string(month), "assigned": .int(amount),
-        ])
+        try ledger.edit(
+            .budgetEntry, ledger.entryId(category: category, month: month),
+            [
+                "category_id": .string(category), "month": .string(month), "assigned": .int(amount),
+            ])
     }
 
     private func spend(_ category: String, _ amount: Int64) throws -> String {
         let id = Ledger.newID()
-        try ledger.edit(.transaction, id, [
-            "account_id": .string(checking), "date": "2026-10-05", "amount": .int(-amount), "category_id": .string(category),
-        ])
+        try ledger.edit(
+            .transaction, id,
+            [
+                "account_id": .string(checking), "date": "2026-10-05", "amount": .int(-amount),
+                "category_id": .string(category),
+            ])
         return id
     }
 
@@ -47,7 +53,9 @@ final class LedgerRulesTests: XCTestCase {
     // MARK: Transfers
 
     func testTransferCreatesLinkedPairAndOnBudgetTransferIsNeutral() throws {
-        try ledger.addTransfer(date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil)
+        try ledger.addTransfer(
+            date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil
+        )
         let out = try XCTUnwrap(legs().first { $0.string("account_id") == checking })
         let inn = try XCTUnwrap(legs().first { $0.string("account_id") == savings })
         XCTAssertEqual(out.int("amount"), -500_000)
@@ -60,7 +68,9 @@ final class LedgerRulesTests: XCTestCase {
     }
 
     func testSurvivingLegIsUnmatched() throws {
-        try ledger.addTransfer(date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil)
+        try ledger.addTransfer(
+            date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil
+        )
         let (a, b) = (legs()[0], legs()[1])
         XCTAssertFalse(ledger.isUnmatched(a))
         try ledger.remove(.transaction, b.id)
@@ -68,19 +78,29 @@ final class LedgerRulesTests: XCTestCase {
     }
 
     func testCoreRefusalsReachTheCaller() throws {
-        XCTAssertThrowsError(try ledger.addTransfer(date: "2026-10-02", from: checking, to: checking, amount: 5, memo: nil, cleared: false, categoryId: nil)) {
+        XCTAssertThrowsError(
+            try ledger.addTransfer(
+                date: "2026-10-02", from: checking, to: checking, amount: 5, memo: nil, cleared: false, categoryId: nil)
+        ) {
             XCTAssertEqual($0.localizedDescription, "Pick two different accounts.")
         }
-        XCTAssertThrowsError(try ledger.addTransfer(date: "2026-10-02", from: checking, to: tracking, amount: 5, memo: nil, cleared: false, categoryId: nil)) {
+        XCTAssertThrowsError(
+            try ledger.addTransfer(
+                date: "2026-10-02", from: checking, to: tracking, amount: 5, memo: nil, cleared: false, categoryId: nil)
+        ) {
             XCTAssertEqual($0.localizedDescription, "Pick the category this money comes from.")
         }
         XCTAssertTrue(legs().isEmpty)
-        try ledger.addTransfer(date: "2026-10-02", from: checking, to: tracking, amount: 200_000, memo: nil, cleared: false, categoryId: rent)
+        try ledger.addTransfer(
+            date: "2026-10-02", from: checking, to: tracking, amount: 200_000, memo: nil, cleared: false,
+            categoryId: rent)
         XCTAssertEqual(row(rent)?.activity, -200_000)
     }
 
     func testEditingAndDeletingATransferTouchesBothLegs() throws {
-        try ledger.addTransfer(date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil)
+        try ledger.addTransfer(
+            date: "2026-10-02", from: checking, to: savings, amount: 500_000, memo: nil, cleared: false, categoryId: nil
+        )
         let inn = try XCTUnwrap(legs().first { $0.string("account_id") == savings })
         try ledger.editTransfer(inn, date: "2026-10-09", amount: 700_000, memo: "move", cleared: true, categoryId: nil)
         let out = try XCTUnwrap(legs().first { $0.string("account_id") == checking })
@@ -104,9 +124,10 @@ final class LedgerRulesTests: XCTestCase {
         try ledger.updateTransaction(t, fields: ["memo": "lunch"], splits: [])  // nothing changed
         XCTAssertEqual(ledger.outbox.count, before + 1)
 
-        XCTAssertThrowsError(try ledger.updateTransaction(
-            t, fields: ["category_id": .null],
-            splits: [SplitLine(categoryId: rent, amount: -40_000), SplitLine(categoryId: food, amount: -40_000)]))
+        XCTAssertThrowsError(
+            try ledger.updateTransaction(
+                t, fields: ["category_id": .null],
+                splits: [SplitLine(categoryId: rent, amount: -40_000), SplitLine(categoryId: food, amount: -40_000)]))
         XCTAssertEqual(ledger.outbox.count, before + 1)
     }
 

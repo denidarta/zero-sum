@@ -45,7 +45,8 @@ public enum Core {
     /// Ledger rules: turn an action (transfers, deleting categories, see `crates/core/src/ledger.rs`)
     /// into entity patches. Throws a `CoreFailure` with a message fit for the user when it is not allowed.
     public static func plan(_ entities: [Entity], command: [String: JSONValue]) throws -> [Patch] {
-        let input = try json(entities), cmd = try json(command)
+        let input = try json(entities)
+        let cmd = try json(command)
         let out = try wrap { try planLedger(entitiesJson: input, commandJson: cmd) }
         return try JSONDecoder().decode([Patch].self, from: Data(out.utf8))
     }

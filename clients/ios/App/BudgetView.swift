@@ -24,13 +24,21 @@ struct BudgetView: View {
             List {
                 Section {
                     HStack {
-                        Button { month = Money.shiftMonth(month, by: -1) } label: { Image(systemName: "chevron.left") }
-                            .accessibilityLabel("Previous month")
+                        Button {
+                            month = Money.shiftMonth(month, by: -1)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .accessibilityLabel("Previous month")
                         Spacer()
                         Text(Money.monthTitle(month)).font(.headline)
                         Spacer()
-                        Button { month = Money.shiftMonth(month, by: 1) } label: { Image(systemName: "chevron.right") }
-                            .accessibilityLabel("Next month")
+                        Button {
+                            month = Money.shiftMonth(month, by: 1)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .accessibilityLabel("Next month")
                     }
                     .buttonStyle(.borderless)
                     HStack {
@@ -55,8 +63,12 @@ struct BudgetView: View {
                         HStack {
                             Text(group.name)
                             Spacer()
-                            Button(role: .destructive) { askDeleteGroup(group) } label: { Image(systemName: "trash") }
-                                .accessibilityLabel("Delete group \(group.name)")
+                            Button(role: .destructive) {
+                                askDeleteGroup(group)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .accessibilityLabel("Delete group \(group.name)")
                         }
                     }
                 }
@@ -93,8 +105,13 @@ struct BudgetView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { SyncBadge() }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { newName = ""; addingGroup = true } label: { Image(systemName: "folder.badge.plus") }
-                        .accessibilityLabel("Add category group")
+                    Button {
+                        newName = ""
+                        addingGroup = true
+                    } label: {
+                        Image(systemName: "folder.badge.plus")
+                    }
+                    .accessibilityLabel("Add category group")
                 }
             }
             .sheet(item: $assigning) { target in
@@ -106,23 +123,27 @@ struct BudgetView: View {
                     let name = newName.trimmingCharacters(in: .whitespaces)
                     if !name.isEmpty {
                         ledger.run {
-                            try ledger.edit(.categoryGroup, Ledger.newID(), [
-                                "name": .string(name), "sort": .int(Int64(ledger.list(.categoryGroup).count)),
-                            ])
+                            try ledger.edit(
+                                .categoryGroup, Ledger.newID(),
+                                [
+                                    "name": .string(name), "sort": .int(Int64(ledger.list(.categoryGroup).count)),
+                                ])
                         }
                     }
                 }
                 Button("Cancel", role: .cancel) {}
             }
             .alert(
-                "New category", isPresented: Binding(get: { addingCategoryTo != nil }, set: { if !$0 { addingCategoryTo = nil } })
+                "New category",
+                isPresented: Binding(get: { addingCategoryTo != nil }, set: { if !$0 { addingCategoryTo = nil } })
             ) {
                 TextField("Name", text: $newName)
                 Button("Add") {
                     let name = newName.trimmingCharacters(in: .whitespaces)
                     if !name.isEmpty, let group = addingCategoryTo {
                         ledger.run {
-                            try ledger.edit(.category, Ledger.newID(), ["group_id": .string(group.id), "name": .string(name)])
+                            try ledger.edit(
+                                .category, Ledger.newID(), ["group_id": .string(group.id), "name": .string(name)])
                         }
                     }
                 }
@@ -146,7 +167,9 @@ struct BudgetView: View {
             ) {
                 ForEach(ledger.sorted(.categoryGroup)) { group in
                     Button(group.name) {
-                        if let c = moving { ledger.run { try ledger.edit(.category, c.id, ["group_id": .string(group.id)]) } }
+                        if let c = moving {
+                            ledger.run { try ledger.edit(.category, c.id, ["group_id": .string(group.id)]) }
+                        }
                     }
                 }
             }
@@ -173,18 +196,32 @@ struct BudgetView: View {
 
     /// D3: a category with transactions is deleted only after they are deleted or moved.
     private func askDeleteCategory(_ category: Entity) {
-        if ledger.transactionCount(in: category.id) == 0 { deletingEmpty = category } else { deletingWithTransactions = category }
+        if ledger.transactionCount(in: category.id) == 0 {
+            deletingEmpty = category
+        } else {
+            deletingWithTransactions = category
+        }
     }
 
     private func categoryRow(_ cat: Entity, row: CategoryMonth?, orphaned: Bool) -> some View {
-        Button { assigning = AssignTarget(id: cat.id, title: cat.name, current: row?.assigned ?? 0) } label: {
+        Button {
+            assigning = AssignTarget(id: cat.id, title: cat.name, current: row?.assigned ?? 0)
+        } label: {
             CategoryRow(name: cat.name, row: row)
         }
         .buttonStyle(.plain)
         .swipeActions {
-            Button(role: .destructive) { askDeleteCategory(cat) } label: { Label("Delete", systemImage: "trash") }
+            Button(role: .destructive) {
+                askDeleteCategory(cat)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
             if orphaned {
-                Button { moving = cat } label: { Label("Move", systemImage: "folder") }.tint(.blue)
+                Button {
+                    moving = cat
+                } label: {
+                    Label("Move", systemImage: "folder")
+                }.tint(.blue)
             }
         }
     }
@@ -253,9 +290,11 @@ private struct AssignSheet: View {
         guard let value = Money.parse(text) else { return }
         if value != current {
             ledger.run {
-                try ledger.edit(.budgetEntry, ledger.entryId(category: target.id, month: month), [
-                    "category_id": .string(target.id), "month": .string(month), "assigned": .int(value),
-                ])
+                try ledger.edit(
+                    .budgetEntry, ledger.entryId(category: target.id, month: month),
+                    [
+                        "category_id": .string(target.id), "month": .string(month), "assigned": .int(value),
+                    ])
             }
         }
         dismiss()
@@ -276,7 +315,9 @@ private struct DeleteCategorySheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("\(category.name) has \(count) transaction\(count == 1 ? "" : "s"). Move them to another category or delete them. Money assigned to it returns to Ready to Assign.")
+                    Text(
+                        "\(category.name) has \(count) transaction\(count == 1 ? "" : "s"). Move them to another category or delete them. Money assigned to it returns to Ready to Assign."
+                    )
                 }
                 Section("Move transactions to") {
                     Picker("Category", selection: $target) {
