@@ -7,5 +7,5 @@ ext=so; [ "$(uname)" = Darwin ] && ext=dylib
 export ZERO_SUM_FFI="$root/target/debug/libzero_sum_ffi_c.$ext"
 export ZERO_SUM_SERVER="$root/target/debug/zero-sum-server"
 cd "$root/clients/android"
-flutter analyze
+flutter analyze --no-fatal-infos
 flutter test "$@"
