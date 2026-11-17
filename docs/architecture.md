@@ -97,7 +97,9 @@ Budget rules (in `crates/core/src/budget.rs`):
 
 - Each on-budget credit card gets a payment category row in `card_payments`. Its id is `card_payment_id(account_id)`, not an entity. Card spending moves into the row, a payment from an on-budget account draws it down, and a budget entry with that id assigns money to it. Spending that overspends a category is credit overspending: the category resets, Ready to Assign is untouched, and the card row is short by that amount. Design: `docs/superpowers/specs/2026-11-01-credit-card-payment-categories-design.md`.
 
-Not modelled yet: goals and targets, scheduled transactions, reconciliation, multiple budgets, currencies.
+Reconciliation: the `reconcile_account` ledger command takes the real balance of an account and plans one cleared adjustment transaction (memo "Reconciliation Balance Adjustment") for the delta, or nothing when they match. Plan without applying to preview the delta. The `reconciled` state and statement tick-off are not modelled.
+
+Not modelled yet: goals and targets, scheduled transactions, multiple budgets, currencies.
 
 ## Clients
 

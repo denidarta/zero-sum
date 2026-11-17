@@ -55,7 +55,22 @@ pub enum Command {
     DeleteEmptyCategory { category_id: Uuid },
     /// D1: remove a group. Fails while it still has live categories.
     DeleteGroup { group_id: Uuid },
+    /// Match an account to the real money. `balance` is what the account really holds.
+    /// The plan is one adjustment transaction (`id`) for the difference, or nothing when
+    /// the balances already match. Its amount is the delta, so a client can preview the
+    /// delta by planning without applying. `category_id` is only kept for an on-budget
+    /// account; without it the adjustment is income (inflow) or Ready to Assign spending.
+    ReconcileAccount {
+        id: Uuid,
+        account_id: Uuid,
+        balance: i64,
+        date: String,
+        #[serde(default)]
+        category_id: Option<Uuid>,
+    },
 }
+
+pub const ADJUSTMENT_MEMO: &str = "Reconciliation Balance Adjustment";
 
 /// One entity write. `deleted` is a tombstone, otherwise `fields` is a field patch.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -154,6 +169,14 @@ impl<'a> Live<'a> {
         picked
             .map(|c| json!(c))
             .ok_or_else(|| "Pick the category this money comes from.".into())
+    }
+
+    /// What the ledger says an account holds: the sum of its live transactions.
+    fn balance(&self, account: Uuid) -> i64 {
+        self.of_kind(Kind::Transaction)
+            .filter(|t| uuid_field(t, "account_id") == Some(account))
+            .filter_map(|t| t.data.get("amount")?.as_i64())
+            .sum()
     }
 
     /// Live transactions that use a category, directly or in a split line.
@@ -395,6 +418,32 @@ pub fn plan(entities: &[EntityState], command: &Command) -> Result<Vec<Patch>, S
                 ));
             }
             Ok(vec![remove(Kind::CategoryGroup, *group_id)])
+        }
+
+        Command::ReconcileAccount {
+            id,
+            account_id,
+            balance,
+            date,
+            category_id,
+        } => {
+            live.get(Kind::Account, *account_id)
+                .ok_or("account not found")?;
+            let delta = balance
+                .checked_sub(live.balance(*account_id))
+                .ok_or("balance out of range")?;
+            if delta == 0 {
+                return Ok(vec![]);
+            }
+            let category = category_id.filter(|_| live.on_budget(*account_id));
+            Ok(vec![edit(
+                Kind::Transaction,
+                *id,
+                json!({
+                    "account_id": account_id, "date": date, "amount": delta,
+                    "category_id": category, "memo": ADJUSTMENT_MEMO, "cleared": true,
+                }),
+            )])
         }
     }
 }
@@ -836,6 +885,76 @@ mod tests {
         }
         let p = run(&mut w, cmd(GROUP)).unwrap();
         assert_eq!((p[0].kind, p[0].deleted), (Kind::CategoryGroup, true));
+    }
+
+    fn reconcile(
+        world: &mut Vec<EntityState>,
+        account: u8,
+        balance: i64,
+        cat: Option<u8>,
+    ) -> Vec<Patch> {
+        run(
+            world,
+            json!({
+                "command": "reconcile_account", "id": id(90), "account_id": id(account),
+                "balance": balance, "date": "2026-10-20", "category_id": cat.map(id),
+            }),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn reconcile_matching_balance_plans_nothing() {
+        let mut w = world();
+        assert!(reconcile(&mut w, CHECKING, 3_000_000, None).is_empty());
+    }
+
+    #[test]
+    fn reconcile_inflow_delta_adds_income() {
+        let mut w = world();
+        let p = reconcile(&mut w, CHECKING, 3_200_000, None);
+        assert_eq!(p.len(), 1);
+        let t = tx(&w, 90);
+        assert_eq!(t.data["amount"], 200_000);
+        assert_eq!(t.data["memo"], ADJUSTMENT_MEMO);
+        assert_eq!(t.data["cleared"], true);
+        assert_eq!(budget(&w).ready_to_assign, 3_200_000);
+        // Reconciled: planning again finds no difference.
+        assert!(reconcile(&mut w, CHECKING, 3_200_000, None).is_empty());
+    }
+
+    #[test]
+    fn reconcile_outflow_delta_takes_the_picked_category() {
+        let mut w = world();
+        reconcile(&mut w, CHECKING, 2_900_000, Some(FOOD));
+        assert_eq!(tx(&w, 90).data["amount"], -100_000);
+        assert_eq!(activity(&w, FOOD), Some(-100_000));
+
+        let mut w = world();
+        reconcile(&mut w, CHECKING, 2_900_000, None);
+        assert_eq!(budget(&w).ready_to_assign, 2_900_000);
+    }
+
+    #[test]
+    fn reconcile_ignores_deleted_transactions_and_off_budget_category() {
+        let mut w = world();
+        w.iter_mut().find(|e| e.id == id(50)).unwrap().deleted = true; // the 3,000.00 income
+        reconcile(&mut w, HOUSE, 500_000, Some(FOOD));
+        assert_eq!(tx(&w, 90).data["amount"], 500_000);
+        assert_eq!(tx(&w, 90).data["category_id"], Value::Null);
+    }
+
+    #[test]
+    fn reconcile_unknown_account_is_an_error() {
+        let w = world();
+        let cmd = Command::ReconcileAccount {
+            id: id(90),
+            account_id: Uuid::from_u128(0xdead),
+            balance: 1,
+            date: "2026-10-20".into(),
+            category_id: None,
+        };
+        assert_eq!(plan(&w, &cmd).unwrap_err(), "account not found");
     }
 
     #[test]
